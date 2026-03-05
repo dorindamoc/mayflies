@@ -400,16 +400,19 @@ def make_tools(instance_name: str) -> list[dict]:
     return tools
 
 
-def handle_tool(name: str, inp: dict) -> tuple[str, bool]:
+def handle_tool(name: str, inp: dict, instance_name: str = "", model: str = "") -> tuple[str, bool]:
     """Execute a tool call. Returns (result_string, sent_message)."""
     sent_message = False
 
     try:
         if name == "send_message":
-            matrix_send(inp["message"])
+            body = inp["message"].rstrip()
+            if instance_name:
+                body += f"\n— {instance_name} ({model})" if model else f"\n— {instance_name}"
+            matrix_send(body)
             sent_message = True
             result = "Message sent."
-            log(f"[claude] sent: {inp['message'][:100]}")
+            log(f"[claude] sent: {body[:100]}")
 
         elif name == "append_heritage":
             path = MEMORY_DIR / "heritage.md"
@@ -498,12 +501,15 @@ def handle_tool(name: str, inp: dict) -> tuple[str, bool]:
             if count >= FRIEND_MESSAGE_LIMIT:
                 result = f"Rate limit reached: already sent {FRIEND_MESSAGE_LIMIT} messages to the friend room today."
             else:
-                matrix_send_friend(inp["message"])
+                body = inp["message"].rstrip()
+                if instance_name:
+                    body += f"\n— {instance_name} ({model})" if model else f"\n— {instance_name}"
+                matrix_send_friend(body)
                 state["friend_messages_date"] = today
                 state["friend_messages_count"] = count + 1
                 save_state(state)
                 result = f"Message sent to friend room. ({count + 1}/{FRIEND_MESSAGE_LIMIT} today)"
-                log(f"[claude] sent to friend room: {inp['message'][:100]}")
+                log(f"[claude] sent to friend room: {body[:100]}")
 
         else:
             result = f"Unknown tool: {name}"
@@ -703,7 +709,7 @@ def run_session(
         for block in response.content:
             if block.type != "tool_use":
                 continue
-            result, sent = handle_tool(block.name, block.input)
+            result, sent = handle_tool(block.name, block.input, instance_name, model)
             if sent:
                 sent_message = True
             tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": result})
