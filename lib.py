@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import random
@@ -416,7 +417,8 @@ def handle_tool(name: str, inp: dict, instance_name: str = "", model: str = "") 
 
         elif name == "append_heritage":
             path = MEMORY_DIR / "heritage.md"
-            path.write_text(path.read_text() + "\n\n" + inp["content"])
+            existing = path.read_text() if path.exists() else ""
+            path.write_text(existing + "\n\n" + inp["content"])
             result = "Appended to heritage.md."
             log("[claude] appended to heritage.md")
 
@@ -439,17 +441,22 @@ def handle_tool(name: str, inp: dict, instance_name: str = "", model: str = "") 
 
         elif name == "append_proposal":
             path = MEMORY_DIR / "proposals.md"
-            existing = path.read_text() if path.exists() else ""
-            separator = "\n\n" if existing.strip() else ""
-            path.write_text(existing + separator + inp["content"])
+            path.touch(exist_ok=True)
+            with open(path, "r+") as _fh:
+                fcntl.flock(_fh, fcntl.LOCK_EX)
+                existing = _fh.read()
+                separator = "\n\n" if existing.strip() else ""
+                _fh.write(separator + inp["content"])
             result = "Proposal appended to proposals.md."
             log("[claude] appended proposal")
 
         elif name == "append_vote":
             path = MEMORY_DIR / "votes.md"
-            existing = path.read_text() if path.exists() else ""
+            path.touch(exist_ok=True)
             line = inp["content"].strip()
-            path.write_text(existing + "\n" + line + "\n")
+            with open(path, "a") as _fh:
+                fcntl.flock(_fh, fcntl.LOCK_EX)
+                _fh.write("\n" + line + "\n")
             result = "Vote recorded in votes.md."
             log(f"[claude] vote recorded: {line}")
 
