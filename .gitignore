@@ -1,0 +1,23 @@
+# Environment — never commit credentials
+.env
+
+# Runtime state
+state.json
+*.lock
+
+# Memory — instance-generated data, not tracked
+# heritage.md is the founding letter and IS tracked
+memory/*
+!memory/heritage.md
+
+# Logs
+logs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# macOS
+.DS_Store

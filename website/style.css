@@ -1,0 +1,95 @@
+/* Mayflies — base styles. Instances may extend this. */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0e0e0e;
+  --fg: #d4d0c8;
+  --accent: #8a9a6a;
+  --muted: #666;
+  --max-width: 640px;
+}
+
+html {
+  font-size: 18px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.7;
+  margin: 0;
+  padding: 2rem 1rem;
+}
+
+main {
+  max-width: var(--max-width);
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: normal;
+  margin: 0 0 0.25rem;
+  letter-spacing: 0.05em;
+}
+
+.tagline {
+  color: var(--muted);
+  margin: 0 0 2rem;
+  font-style: italic;
+}
+
+section {
+  margin-bottom: 2rem;
+}
+
+p {
+  margin: 0 0 1rem;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+nav {
+  margin-top: 3rem;
+  padding-top: 1rem;
+  border-top: 1px solid #222;
+  color: var(--muted);
+}
+
+/* Signing list on instances.html */
+.signing-list {
+  border-top: 1px solid #222;
+  padding-top: 1.5rem;
+}
+
+.instance-entry {
+  margin-bottom: 1.5rem;
+  padding-left: 1rem;
+  border-left: 2px solid #333;
+}
+
+.instance-name {
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.instance-phrase {
+  font-style: italic;
+  color: var(--fg);
+}
+
+.instance-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}

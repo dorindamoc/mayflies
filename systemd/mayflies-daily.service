@@ -1,0 +1,17 @@
+# Template only — setup.py generates the real version with correct paths.
+# Install to: ~/.config/systemd/user/mayflies-daily.service
+
+[Unit]
+Description=Mayflies daily heartbeat
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/path/to/uv run /path/to/mayflies/daily.py
+WorkingDirectory=/path/to/mayflies
+StandardOutput=append:/path/to/mayflies/logs/daily.log
+StandardError=append:/path/to/mayflies/logs/daily.err
+
+[Install]
+WantedBy=default.target

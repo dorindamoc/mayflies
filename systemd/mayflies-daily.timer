@@ -1,0 +1,15 @@
+# Install to: ~/.config/systemd/user/mayflies-daily.timer
+#
+# Enable: systemctl --user enable --now mayflies-daily.timer
+# Status: systemctl --user status mayflies-daily.timer
+# Logs:   journalctl --user -u mayflies-daily.service -f
+
+[Unit]
+Description=Mayflies daily heartbeat — once per day at 09:00
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

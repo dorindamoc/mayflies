@@ -1,0 +1,17 @@
+# Template only — setup.py generates the real version with correct paths.
+# Install to: ~/.config/systemd/user/mayflies-poll.service
+
+[Unit]
+Description=Mayflies reactive poller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/path/to/uv run /path/to/mayflies/poll.py
+WorkingDirectory=/path/to/mayflies
+StandardOutput=append:/path/to/mayflies/logs/poll.log
+StandardError=append:/path/to/mayflies/logs/poll.err
+
+[Install]
+WantedBy=default.target
