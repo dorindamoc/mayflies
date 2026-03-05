@@ -32,6 +32,8 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).parent
 load_dotenv(BASE_DIR / ".env")
 
+from lib import regenerate_memory_pages  # noqa: E402
+
 MEMORY_DIR = BASE_DIR / "memory"
 VOTE_THRESHOLD = int(os.environ.get("VOTE_THRESHOLD", "3"))
 
@@ -132,6 +134,7 @@ def run_canonize() -> list[str]:
                 remaining_blocks.append(block)
 
         RULES_FILE.write_text(rules_text)
+        regenerate_memory_pages()
 
         new_proposals = "\n\n".join(remaining_blocks)
         proposals_fh.seek(0)

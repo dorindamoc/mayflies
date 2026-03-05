@@ -36,6 +36,7 @@ from lib import (
     TOKEN,
     TRANSIENT_ERRORS,
     commit_website_changes,
+    regenerate_memory_pages,
     format_events,
     format_identity_block,
     generate_personality,
@@ -218,6 +219,12 @@ def main():
 
         # Don't advance tokens yet — retry if session fails
         sent = run_claude_session(name, model, traits, human_messages, friend_messages, memory, session_context)
+
+        try:
+            log("[poll] regenerating memory pages")
+            regenerate_memory_pages()
+        except Exception as e:
+            log(f"[poll] page regeneration failed: {e}")
 
         try:
             log("[poll] committing website changes")

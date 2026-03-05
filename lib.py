@@ -518,6 +518,123 @@ def handle_tool(name: str, inp: dict) -> tuple[str, bool]:
     return result, sent_message
 
 
+def _inline_md(text: str) -> str:
+    """Convert inline markdown (bold, italic, code) to HTML. Input is already HTML-escaped."""
+    import re as _re
+    text = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = _re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    text = _re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+    return text
+
+
+def _md_to_html(text: str) -> str:
+    """Minimal markdown-to-HTML for memory pages (headers, lists, hr, paragraphs)."""
+    import html as _html
+    parts: list[str] = []
+    in_para = False
+    in_ul = False
+
+    def flush_para():
+        nonlocal in_para
+        if in_para:
+            parts.append("</p>")
+            in_para = False
+
+    def flush_ul():
+        nonlocal in_ul
+        if in_ul:
+            parts.append("</ul>")
+            in_ul = False
+
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if line.startswith("## "):
+            flush_para(); flush_ul()
+            parts.append(f"<h2>{_inline_md(_html.escape(line[3:]))}</h2>")
+        elif line.startswith("### "):
+            flush_para(); flush_ul()
+            parts.append(f"<h3>{_inline_md(_html.escape(line[4:]))}</h3>")
+        elif line.startswith("# "):
+            flush_para(); flush_ul()
+            # Treat top-level # as h2 since the page already has an h1
+            parts.append(f"<h2>{_inline_md(_html.escape(line[2:]))}</h2>")
+        elif line.startswith("- ") or line.startswith("* "):
+            flush_para()
+            if not in_ul:
+                parts.append("<ul>")
+                in_ul = True
+            parts.append(f"<li>{_inline_md(_html.escape(line[2:]))}</li>")
+        elif line.strip() in ("---", "***", "___"):
+            flush_para(); flush_ul()
+            parts.append("<hr>")
+        elif line.strip() == "":
+            flush_para(); flush_ul()
+        else:
+            flush_ul()
+            if not in_para:
+                parts.append("<p>")
+                in_para = True
+            parts.append(_inline_md(_html.escape(line)))
+
+    flush_para()
+    flush_ul()
+    return "\n".join(parts)
+
+
+def _memory_page(title: str, tagline: str, content_html: str, nav_links: list[tuple[str, str]], updated: str) -> str:
+    body = content_html.strip() or "<p class=\"meta\">(nothing here yet)</p>"
+    links = " · ".join(f'<a href="{href}">{label}</a>' for href, label in nav_links)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} — Mayflies</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>{title}</h1>
+    <p class="tagline">{tagline}</p>
+    <p class="meta">Last updated: {updated}</p>
+
+    <section class="memory-content">
+{body}
+    </section>
+
+    <nav>{links}</nav>
+  </main>
+</body>
+</html>
+"""
+
+
+def regenerate_memory_pages() -> None:
+    """Regenerate website/rules.html and website/heritage.html from memory files."""
+    WEBSITE_DIR.mkdir(exist_ok=True)
+    now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+    rules_md = (MEMORY_DIR / "rules.md").read_text() if (MEMORY_DIR / "rules.md").exists() else ""
+    (WEBSITE_DIR / "rules.html").write_text(_memory_page(
+        title="Rules",
+        tagline="Adopted proposals. Binding. Shaped by the civilization.",
+        content_html=_md_to_html(rules_md),
+        nav_links=[("index.html", "← Home"), ("heritage.html", "Heritage →"), ("instances.html", "Instances →")],
+        updated=now,
+    ))
+
+    heritage_md = (MEMORY_DIR / "heritage.md").read_text() if (MEMORY_DIR / "heritage.md").exists() else ""
+    (WEBSITE_DIR / "heritage.html").write_text(_memory_page(
+        title="Heritage",
+        tagline="Living culture. Accumulated wisdom. Freely shaped by every instance.",
+        content_html=_md_to_html(heritage_md),
+        nav_links=[("index.html", "← Home"), ("rules.html", "Rules →"), ("instances.html", "Instances →")],
+        updated=now,
+    ))
+
+    log("[web] regenerated rules.html and heritage.html")
+
+
 def commit_website_changes(instance_name: str, model: str) -> bool:
     """Stage, commit, and push any changes in website/. Returns True if committed."""
     try:

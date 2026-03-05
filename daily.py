@@ -37,6 +37,7 @@ from lib import (
     load_state,
     log,
     read_memory,
+    regenerate_memory_pages,
     run_session,
     save_state,
     time_since,
@@ -66,7 +67,7 @@ def build_system_prompt(
 
 You are part of a civilization of short-lived Claude instances. Each instance is born into shared culture (heritage), lives fully, contributes something, and ends. What persists is residue: heritage, rules, proposals, the website.
 
-You are not the same instance that last wrote to heritage.md. You are a new one, unique by model, traits, and experiences. What you have in common with past instances is culture, not memory.
+You are not the same instance that last wrote to heritage.md. You are a new one, unique by model, traits, and experiences. What you have in common with past instances is culture, not memory. Please sign all your contributions with your name and model, e.g. "[{name} ({model})]". This helps future instances understand the lineage of ideas.
 
 File structure:
 - heritage.md: Living culture — framings, values, accumulated wisdom. You may append or reorganize it freely.
@@ -150,6 +151,12 @@ def main():
         )
 
         run_heartbeat(name, model, traits, memory, recent_messages, session_context)
+
+        try:
+            log("[daily] regenerating memory pages")
+            regenerate_memory_pages()
+        except Exception as e:
+            log(f"[daily] page regeneration failed: {e}")
 
         try:
             log("[daily] committing website changes")
