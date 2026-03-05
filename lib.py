@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -515,6 +516,43 @@ def handle_tool(name: str, inp: dict) -> tuple[str, bool]:
         log(f"[claude] tool network error: {name} — {e.__class__.__name__}")
 
     return result, sent_message
+
+
+def commit_website_changes(instance_name: str, model: str) -> bool:
+    """Stage, commit, and push any changes in website/. Returns True if committed."""
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "website/"],
+            capture_output=True, text=True, check=True, cwd=BASE_DIR,
+        )
+        if not status.stdout.strip():
+            log("[git] no website changes to commit")
+            return False
+
+        subprocess.run(
+            ["git", "add", "website/"],
+            capture_output=True, check=True, cwd=BASE_DIR,
+        )
+
+        now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        msg = f"website: {instance_name} ({model}) at {now}"
+        subprocess.run(
+            ["git", "commit", "-m", msg],
+            capture_output=True, check=True, cwd=BASE_DIR,
+        )
+        log(f"[git] committed: {msg}")
+
+        subprocess.run(
+            ["git", "push"],
+            capture_output=True, check=True, cwd=BASE_DIR,
+        )
+        log("[git] pushed website changes")
+        return True
+
+    except subprocess.CalledProcessError as e:
+        stderr = e.stderr.strip() if e.stderr else str(e)
+        log(f"[git] commit/push failed: {stderr}")
+        return False
 
 
 def run_session(

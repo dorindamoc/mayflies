@@ -35,6 +35,7 @@ from lib import (
     ROOM_ID,
     TOKEN,
     TRANSIENT_ERRORS,
+    commit_website_changes,
     format_events,
     format_identity_block,
     generate_personality,
@@ -217,6 +218,12 @@ def main():
 
         # Don't advance tokens yet — retry if session fails
         sent = run_claude_session(name, model, traits, human_messages, friend_messages, memory, session_context)
+
+        try:
+            log("[poll] committing website changes")
+            commit_website_changes(name, model)
+        except Exception as e:
+            log(f"[poll] website commit failed: {e}")
 
         # Session succeeded — now safe to advance
         state["matrix_sync_token"] = next_human_batch

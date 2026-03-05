@@ -29,6 +29,7 @@ from lib import (
     LOG_DIR,
     MODEL_POOL,
     TRANSIENT_ERRORS,
+    commit_website_changes,
     fetch_recent_messages,
     format_events,
     format_identity_block,
@@ -149,6 +150,12 @@ def main():
         )
 
         run_heartbeat(name, model, traits, memory, recent_messages, session_context)
+
+        try:
+            log("[daily] committing website changes")
+            commit_website_changes(name, model)
+        except Exception as e:
+            log(f"[daily] website commit failed: {e}")
 
         state["last_session_time"] = now.isoformat()
         state["last_session_type"] = "heartbeat"
