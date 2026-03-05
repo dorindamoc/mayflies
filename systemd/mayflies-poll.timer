@@ -1,0 +1,16 @@
+# Install to: ~/.config/systemd/user/mayflies-poll.timer
+#
+# Enable: systemctl --user enable --now mayflies-poll.timer
+# Status: systemctl --user status mayflies-poll.timer
+# Logs:   journalctl --user -u mayflies-poll.service -f
+
+[Unit]
+Description=Mayflies reactive poller — every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
