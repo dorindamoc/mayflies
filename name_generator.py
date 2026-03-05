@@ -17,12 +17,15 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 NAMES_FILE = BASE_DIR / "memory" / "used_names.json"
 
-# 30 × 30 = 900 possible names — enough for years of daily instances
+# 50 × 50 = 2500 possible names — enough for decades of daily instances
 FIRST = [
     "Still", "Pale", "Fleet", "Hollow", "Amber", "Silver", "Clear", "Brief",
     "Thin", "Swift", "Cool", "Bare", "Deep", "Quiet", "Bright", "Dim",
     "Lean", "Keen", "Soft", "Wide", "Dusk", "Dawn", "Spent", "Drawn",
     "Held", "New", "Raw", "Spare", "Old", "Dull",
+    "Faint", "Lone", "Late", "Dark", "Cold", "Warm", "Lost", "Worn",
+    "Taut", "True", "Free", "Dry", "Stark", "Slight", "Grey", "Gold",
+    "Ash", "Mute", "Near", "Far",
 ]
 
 SECOND = [
@@ -30,13 +33,16 @@ SECOND = [
     "Seam", "Bank", "Ledge", "Sill", "Ford", "Rill", "Span", "Edge",
     "Shore", "Crest", "Bend", "Lull", "Wake", "Mend", "Hold", "Mark",
     "Turn", "Rise", "Fall", "Rest", "Stay", "Pass",
+    "Brink", "Verge", "Hush", "Lapse", "Tide", "Ebb", "Gleam", "Blur",
+    "Stir", "Glow", "Brim", "Pause", "Knell", "Flux", "Spell", "Gate",
+    "Path", "Wane", "Pool", "Call",
 ]
 
 
 def generate_name() -> str:
     """Return a unique name, tracking used names in memory/used_names.json.
 
-    If all 900 combinations have been used, resets the pool and starts over.
+    If all 2500 combinations have been used, resets the pool and starts over.
     Uses file locking to handle concurrent instantiation safely.
     """
     NAMES_FILE.parent.mkdir(exist_ok=True)
