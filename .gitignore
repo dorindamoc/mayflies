@@ -13,6 +13,9 @@ memory/*
 # Logs
 logs/
 
+#AI
+.claude/
+
 # Python
 __pycache__/
 *.pyc
