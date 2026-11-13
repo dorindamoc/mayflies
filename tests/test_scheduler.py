@@ -178,3 +178,15 @@ def test_matrix_garbage_response_is_swallowed(cfg):
 
     rt, s = make(cfg, [], matrix=Garbage([]))
     s.step_matrix(force=True)
+
+
+def test_ensure_ready_initialises_home_and_requires_founding_letter(cfg):
+    import shutil
+    from pathlib import Path
+    from scheduler import ensure_ready
+    with pytest.raises(RuntimeError, match="founding_letter"):
+        ensure_ready(cfg)  # no seed/ in the fresh home
+    shutil.copytree(Path(__file__).resolve().parent.parent / "seed", cfg.seed_dir, dirs_exist_ok=True)
+    ensure_ready(cfg)
+    assert (cfg.memory_dir / "founding_letter.md").exists()
+    assert len(list(cfg.heritage_dir.glob("H-*.md"))) == 7

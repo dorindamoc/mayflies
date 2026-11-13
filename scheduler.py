@@ -14,6 +14,7 @@ from heartbeat import run_prompt
 from matrix import MatrixInbox
 from name_generator import generate_name, load_retired
 from runtime import Runtime
+from setup import init_home
 from trait_generator import random_traits
 
 
@@ -126,9 +127,18 @@ class Scheduler:
             self.step_matrix()
 
 
+def ensure_ready(cfg: Config) -> None:
+    """Create memory/ and seed it if needed; refuse to start without the founding letter."""
+    init_home(cfg)
+    if not (cfg.memory_dir / "founding_letter.md").exists():
+        raise RuntimeError(f"{cfg.memory_dir}/founding_letter.md is missing and no seed/founding_letter.md "
+                           f"was found to copy; instances would wake without it")
+
+
 def main(argv=None) -> None:
     argv = sys.argv[1:] if argv is None else argv
     cfg = Config.from_env()
+    ensure_ready(cfg)
     rt = Runtime.build(cfg)
     sched = Scheduler(rt)
     sched.seed_population()
