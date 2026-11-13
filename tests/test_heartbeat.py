@@ -87,3 +87,16 @@ def test_matrix_kind_includes_message_and_uses_budget(cfg):
     assert "status?" in rt.llm.calls[0]["messages"][1]["content"]
     assert rt.llm.calls[0]["tools"]  # tools offered
     assert rt.llm.calls[-1]["tools"] is None  # distiller has no tools
+
+
+def test_follow_up_failure_after_tools_still_completes_turn(cfg):
+    rt = make_rt(cfg, [LLMReply("", [ToolCall("die", {"reason": "x"})]), LLMError("timeout"), LLMReply("n")])
+    r = run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert r.die_reason == "x"
+
+
+def test_tool_calls_in_capped_round_are_executed(cfg):
+    replies = [LLMReply("", [ToolCall("list_website", {})]) for _ in range(cfg.max_tool_rounds)]
+    replies.append(LLMReply("", [ToolCall("save_memory", {"text": "late"})]))
+    rt = make_rt(cfg, replies)
+    assert run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat").fragment == "late"

@@ -79,3 +79,12 @@ def test_names_are_unique_and_never_first_gen(cfg):
         spawn(rt, f"SR-2026-11-13-{i + 1:03d}")
     born = process_requests(rt)
     assert len({b.name for b in born}) == len(born) == 10
+
+
+def test_malformed_spawn_entry_is_skipped_not_fatal(cfg):
+    rt = make_rt(cfg)
+    append_entry(rt.store.spawn_path, "### SR-2026-11-13-001\nPurpose: no requester header")
+    spawn(rt, "SR-2026-11-13-002")
+    born = process_requests(rt)
+    assert len(born) == 1
+    assert process_requests(rt) == []

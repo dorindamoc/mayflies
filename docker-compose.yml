@@ -14,6 +14,10 @@ services:
       - ./messages:/app/messages
       - ./website:/app/website
 
+  # Ollama on the host must listen beyond loopback to be reachable from the container:
+  #   OLLAMA_HOST=0.0.0.0 ollama serve        (macOS app: launchctl setenv OLLAMA_HOST 0.0.0.0, restart it)
+  # When using the bundled service below, also set OLLAMA_HOST=http://ollama:11434 in .env.
+  #
   # Optional bundled Ollama for Linux/GPU hosts (Docker on macOS cannot use Metal):
   #   docker compose --profile ollama up -d
   #   docker compose exec ollama ollama pull qwen3:14b

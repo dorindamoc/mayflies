@@ -36,9 +36,14 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
     specs = tool_specs()
     text = ""
     for round_no in range(cfg.max_tool_rounds + 1):
-        reply = rt.llm.chat(messages, tools=specs)
+        try:
+            reply = rt.llm.chat(messages, tools=specs)
+        except LLMError:
+            if round_no == 0:
+                raise  # nothing happened yet: the prompt can be retried whole
+            break  # tools already ran: finish the turn rather than replay their side effects
         text = reply.content or text
-        if not reply.tool_calls or round_no == cfg.max_tool_rounds:
+        if not reply.tool_calls:
             break
         messages.append({"role": "assistant", "content": reply.content or "", "tool_calls": [
             {"function": {"name": c.name, "arguments": c.arguments}} for c in reply.tool_calls]})

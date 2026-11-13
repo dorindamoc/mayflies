@@ -152,3 +152,29 @@ def test_matrix_http_error_is_swallowed(cfg):
 
     rt, s = make(cfg, [], matrix=Broken([]))
     s.step_matrix(force=True)  # must not raise
+
+
+def test_unexpected_prompt_error_does_not_crash_round(cfg, monkeypatch):
+    import scheduler
+    rt, s = make(cfg, [], names=("Pale Rest", "Dark Hinge"))
+    monkeypatch.setattr(scheduler, "run_prompt", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    s.run_round()
+    assert Registry(cfg).get("Pale Rest").prompts_done == 0
+
+
+def test_births_or_canonize_errors_do_not_crash_round(cfg, monkeypatch):
+    import scheduler
+    rt, s = make(cfg, ok())
+    monkeypatch.setattr(scheduler, "process_requests", lambda rt: (_ for _ in ()).throw(ValueError("bad")))
+    monkeypatch.setattr(scheduler, "canonize", lambda cfg: (_ for _ in ()).throw(ValueError("bad")))
+    s.run_round()
+    assert Registry(cfg).get("Pale Rest").prompts_done == 1
+
+
+def test_matrix_garbage_response_is_swallowed(cfg):
+    class Garbage(FakeMatrix):
+        def fetch_human_messages(self, limit=20):
+            raise ValueError("not json")
+
+    rt, s = make(cfg, [], matrix=Garbage([]))
+    s.step_matrix(force=True)

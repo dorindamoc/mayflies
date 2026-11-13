@@ -92,5 +92,6 @@ class Store:
     def next_id(self, prefix: str, path: Path) -> str:
         day = now_utc().strftime("%Y-%m-%d")
         pat = re.compile(rf"{re.escape(prefix)}-{day}-(\d{{3}})")
-        nums = [int(m.group(1)) for m in pat.finditer(path.read_text())] if path.exists() else []
+        sources = (path, self.rules_path, self.cfg.memory_dir / "archive" / "promoted_proposals.md")
+        nums = [int(m.group(1)) for p in sources if p.exists() for m in pat.finditer(p.read_text())]
         return f"{prefix}-{day}-{(max(nums) if nums else 0) + 1:03d}"

@@ -34,7 +34,8 @@ class MatrixClient:
 
     def fetch_human_messages(self, limit: int = 20) -> list:
         resp = self._http.get(f"/_matrix/client/v3/rooms/{self.cfg.matrix_room_id}/messages",
-                              params={"dir": "b", "limit": str(limit)})
+                              params={"dir": "b", "limit": str(limit), "filter": json.dumps(
+                                  {"types": ["m.room.message"], "senders": [self.cfg.matrix_human_user]})})
         resp.raise_for_status()
         out = []
         for e in resp.json().get("chunk", []):

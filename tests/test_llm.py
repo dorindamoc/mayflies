@@ -81,3 +81,16 @@ def test_4xx_is_immediate_error(cfg):
     with pytest.raises(LLMError):
         client(cfg, handler).chat([])
     assert len(attempts) == 1
+
+
+def test_non_json_success_body_is_llm_error(cfg):
+    with pytest.raises(LLMError):
+        client(cfg, lambda req: httpx.Response(200, text="<html>proxy</html>")).chat([])
+
+
+def test_malformed_native_tool_call_is_skipped(cfg):
+    def handler(req):
+        return httpx.Response(200, json={"message": {"content": "x", "tool_calls": [
+            {"function": {}}, {"nofunction": 1}, {"function": {"name": "die", "arguments": {}}}]}})
+
+    assert client(cfg, handler).chat([]).tool_calls == [ToolCall("die", {})]

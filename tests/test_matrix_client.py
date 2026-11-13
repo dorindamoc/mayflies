@@ -36,3 +36,16 @@ def test_send_uses_room_and_friend_room(tmp_path):
     assert c.send("hi") == "$e"
     c.send_friend("yo")
     assert "!r:example" in urls[0] and "!f:example" in urls[1]
+
+
+def test_fetch_asks_server_to_filter_to_human_messages(tmp_path):
+    import json as _json
+    seen = {}
+
+    def handler(req):
+        seen.update(dict(req.url.params))
+        return httpx.Response(200, json={"chunk": []})
+
+    MatrixClient(mcfg(tmp_path), transport=httpx.MockTransport(handler)).fetch_human_messages()
+    f = _json.loads(seen["filter"])
+    assert f["senders"] == ["@d:example"] and f["types"] == ["m.room.message"]

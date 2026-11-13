@@ -114,3 +114,25 @@ def test_matrix_tools_without_matrix(ctx):
 def test_actions_are_logged(ctx):
     dispatch(ctx, "board_post", {"text": "hello world"})
     assert any("board_post" in a for a in ctx.outcome.actions)
+
+
+def _propose(ctx):
+    return dispatch(ctx, "propose", {"title": "T", "motivation": "m", "text": "R"}).split()[-1]
+
+
+def test_vote_accepts_float_and_rejects_bool(ctx):
+    pid = _propose(ctx)
+    assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1.0}).startswith("Vote")
+    assert "| +1 |" in ctx.store.votes_path.read_text()
+    assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": True}).startswith("Error")
+
+
+def test_read_website_refuses_oversize_for_remaining_context(ctx):
+    (ctx.cfg.website_dir / "big.html").write_text("z" * 150_000)
+    assert dispatch(ctx, "read_website", {"path": "big.html"}).lower().startswith("not enough context")
+
+
+def test_long_board_posts_and_messages_are_refused(ctx):
+    assert dispatch(ctx, "board_post", {"text": "x" * 4001}).startswith("Error")
+    assert dispatch(ctx, "send_message", {"to": "Dark Hinge", "text": "x" * 4001}).startswith("Error")
+    assert not ctx.store.board_path.exists()

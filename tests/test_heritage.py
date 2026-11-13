@@ -45,3 +45,11 @@ def test_add_requires_tags_and_title(tmp_path):
         Catalog(tmp_path).add("a", "t", [], "s", "b")
     with pytest.raises(ValueError):
         Catalog(tmp_path).add("a", "  ", ["x"], "s", "b")
+
+
+def test_unparseable_article_file_is_skipped(tmp_path):
+    c = Catalog(tmp_path)
+    c.add("a", "ok", ["x"], "s", "b")
+    (tmp_path / "H-009.md").write_text("no frontmatter at all")
+    assert [a.id for a in c.articles()] == ["H-001"]
+    assert c.tag_counts() == {"x": 1}

@@ -15,6 +15,14 @@ from store import Store, append_entry, now_utc, one_line
 
 WEBSITE_SUFFIXES = {".html", ".css", ".md", ".txt"}
 WEBSITE_MAX_BYTES = 200_000
+MAX_TEXT_CHARS = 4000
+
+
+def _check_len(text: str, what: str) -> str:
+    text = str(text)
+    if len(text) > MAX_TEXT_CHARS:
+        raise ValueError(f"{what} too long ({len(text)} chars, max {MAX_TEXT_CHARS}). Shorten it or add a heritage article.")
+    return text
 
 
 @dataclass
@@ -124,7 +132,7 @@ def _add_heritage(ctx, a):
 
 
 def _board_post(ctx, a):
-    ctx.store.board_post(ctx.instance.name, str(a["text"]))
+    ctx.store.board_post(ctx.instance.name, _check_len(a["text"], "post"))
     return "Posted to the board."
 
 
@@ -135,7 +143,7 @@ def _send_message(ctx, a):
         return f"Error: {to} is not alive."
     if to == ctx.instance.name:
         return "Error: you cannot message yourself."
-    ctx.store.inbox_append(to, ctx.instance.name, str(a["text"]))
+    ctx.store.inbox_append(to, ctx.instance.name, _check_len(a["text"], "message"))
     return f"Sent to {to}."
 
 
@@ -149,9 +157,13 @@ def _propose(ctx, a):
 
 def _vote(ctx, a):
     pid, v = str(a["proposal_id"]), a["vote"]
-    if v not in (1, -1, "1", "-1", "+1"):
+    try:
+        f = float(str(v).strip().lstrip("+"))
+    except ValueError:
+        f = 0.0
+    if isinstance(v, bool) or f not in (1.0, -1.0):
         return "Error: vote must be +1 or -1."
-    v = 1 if str(v) in ("1", "+1") else -1
+    v = int(f)
     props = ctx.store.proposals_path.read_text() if ctx.store.proposals_path.exists() else ""
     if not re.search(rf"(?m)^### {re.escape(pid)} ", props):
         return f"Error: {pid} is not an open proposal."
@@ -193,7 +205,12 @@ def _list_website(ctx, a):
 
 
 def _read_website(ctx, a):
-    return _website_path(ctx.cfg, str(a["path"])).read_text()
+    content = _website_path(ctx.cfg, str(a["path"])).read_text()
+    cost = est_tokens(content)
+    if not ctx.budget.fits(cost):
+        return (f"Not enough context: {a['path']} costs {cost} tokens, "
+                f"you have {ctx.budget.remaining} remaining. Nothing was read.")
+    return content
 
 
 def _write_website(ctx, a):

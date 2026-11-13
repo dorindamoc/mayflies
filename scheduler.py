@@ -7,13 +7,10 @@ import sys
 import time
 from datetime import datetime, timezone
 
-import httpx
-
 from births import process_requests
 from canonize import canonize
 from config import Config
 from heartbeat import run_prompt
-from llm import LLMError
 from matrix import MatrixInbox
 from name_generator import generate_name, load_retired
 from runtime import Runtime
@@ -67,8 +64,8 @@ class Scheduler:
         log(f"{name}: {kind} prompt {inst.prompts_done + 1}/{inst.lifespan}")
         try:
             result = run_prompt(self.rt, inst, kind)
-        except LLMError as e:
-            log(f"{name}: prompt failed, not counted ({e})")
+        except Exception as e:  # LLM outage or anything unexpected: not counted, nobody dies
+            log(f"{name}: prompt failed, not counted ({type(e).__name__}: {e})")
             return
         self._apply(inst, result, counted=True, final=final)
 
@@ -82,8 +79,8 @@ class Scheduler:
         self._last_poll = now
         try:
             self.inbox.ingest(self.rt.matrix.fetch_human_messages())
-        except httpx.HTTPError as e:
-            log(f"matrix poll failed: {e}")
+        except Exception as e:  # network error, bad JSON, unexpected shape
+            log(f"matrix poll failed: {type(e).__name__}: {e}")
             return
         alive = [i.name for i in self.rt.registry.alive()]
         for msg, name in self.inbox.due(alive):
@@ -93,8 +90,8 @@ class Scheduler:
             log(f"{name}: matrix prompt")
             try:
                 result = run_prompt(self.rt, inst, "matrix", matrix_msg=msg["body"])
-            except LLMError as e:
-                log(f"{name}: matrix prompt failed, will retry ({e})")
+            except Exception as e:
+                log(f"{name}: matrix prompt failed, will retry ({type(e).__name__}: {e})")
                 continue
             self._apply(inst, result, counted=False)
             self.inbox.mark_delivered(msg["event_id"], name)
@@ -107,11 +104,16 @@ class Scheduler:
             inst = self.rt.registry.get(name)
             if inst is not None and inst.alive:
                 self.run_counted(name)
-        born = process_requests(self.rt)
-        for b in born:
-            log(f"born: {b.name} (parents: {', '.join(b.parents) or 'none'})")
-        for pid in canonize(self.cfg):
-            log(f"canonized {pid}")
+        try:
+            for b in process_requests(self.rt):
+                log(f"born: {b.name} (parents: {', '.join(b.parents) or 'none'})")
+        except Exception as e:
+            log(f"births failed: {type(e).__name__}: {e}")
+        try:
+            for pid in canonize(self.cfg):
+                log(f"canonized {pid}")
+        except Exception as e:
+            log(f"canonize failed: {type(e).__name__}: {e}")
         self.rt.registry.save()
 
     def idle(self, seconds: int) -> None:

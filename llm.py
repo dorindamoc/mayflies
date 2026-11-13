@@ -81,6 +81,8 @@ class LLMClient:
                 resp.raise_for_status()
                 data = resp.json()
                 break
+            except ValueError as e:
+                raise LLMError(f"ollama returned a non-JSON body: {e}") from e
             except httpx.HTTPStatusError as e:
                 if e.response.status_code < 500:
                     raise LLMError(f"ollama rejected request: {e}") from e
@@ -93,8 +95,11 @@ class LLMClient:
 
         msg = data.get("message", {})
         content = _THINK.sub("", msg.get("content") or "").strip()
-        calls = [ToolCall(c["function"]["name"], _args(c["function"].get("arguments")))
-                 for c in (msg.get("tool_calls") or [])]
+        calls = []
+        for c in msg.get("tool_calls") or []:
+            fn = c.get("function") if isinstance(c, dict) else None
+            if isinstance(fn, dict) and fn.get("name"):
+                calls.append(ToolCall(fn["name"], _args(fn.get("arguments"))))
         if not calls:
             content, calls = parse_text_tool_calls(content)
         return LLMReply(content, calls, data.get("prompt_eval_count", 0), data.get("eval_count", 0))

@@ -53,3 +53,15 @@ def test_next_id_increments_per_day(cfg):
     assert first.endswith("-001") and first.startswith("P-")
     append_entry(s.proposals_path, f"### {first} — t")
     assert s.next_id("P", s.proposals_path).endswith("-002")
+
+
+def test_next_id_not_reused_after_same_day_canonization(cfg):
+    from canonize import canonize
+    s = Store(cfg)
+    pid = s.next_id("P", s.proposals_path)
+    append_entry(s.proposals_path, f"### {pid} — T\nAuthor: A\nMotivation: m\nProposed text:\nR")
+    with open(s.votes_path, "a") as fh:
+        for w in "ABC":
+            fh.write(f"- {pid} | +1 | {w} |\n")
+    assert canonize(cfg) == [pid]
+    assert s.next_id("P", s.proposals_path) != pid

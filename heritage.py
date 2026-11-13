@@ -50,7 +50,13 @@ class Catalog:
     def articles(self) -> list:
         if not self.dir.exists():
             return []
-        return [_parse(p) for p in sorted(self.dir.glob("H-*.md"))]
+        out = []
+        for p in sorted(self.dir.glob("H-*.md")):
+            try:
+                out.append(_parse(p))
+            except Exception:  # a hand-edited or damaged file must not break every prompt
+                continue
+        return out
 
     def get(self, article_id: str) -> Optional[Article]:
         for a in self.articles():

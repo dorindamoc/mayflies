@@ -46,6 +46,13 @@ def process_requests(rt: Runtime) -> list:
         if not m or m.group(1) in done:
             continue
         rid = m.group(1)
+        requester = None
+        if kind == "spawn":
+            rm = re.search(r"— by (.+)$", block.splitlines()[0])
+            if not rm:
+                done.add(rid)  # malformed request: drop, do not retry forever
+                continue
+            requester = rm.group(1).strip()
         if kind == "procreate":
             names = [n.strip() for n in _field(block, "Parents").split("|")]
             parents = [rt.registry.get(n) for n in names]
@@ -55,7 +62,6 @@ def process_requests(rt: Runtime) -> list:
         if not has_room():
             break  # queued: stays unprocessed until a slot opens
         if kind == "spawn":
-            requester = re.search(r"— by (.+)$", block.splitlines()[0]).group(1).strip()
             inst = rt.registry.new_instance(_new_name(rt), random_traits())
             rt.registry.add(inst)
             rt.store.inbox_append(
