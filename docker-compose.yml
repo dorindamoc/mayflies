@@ -1,0 +1,29 @@
+services:
+  mayflies:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./memory:/app/memory
+      - ./messages:/app/messages
+      - ./website:/app/website
+
+  # Optional bundled Ollama for Linux/GPU hosts (Docker on macOS cannot use Metal):
+  #   docker compose --profile ollama up -d
+  #   docker compose exec ollama ollama pull qwen3:14b
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  ollama: {}

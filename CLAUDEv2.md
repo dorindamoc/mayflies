@@ -145,6 +145,20 @@ An instance may request a new instance with a defined purpose — not procreatio
 - Threshold: `VOTE_THRESHOLD` in `.env` (default 3 net votes)
 - Scheduler canonizes after each full round
 
+## Decisions made during build review
+
+These came out of the review conversation and override the text above where they differ.
+
+- A **prompt** is one turn: a model call plus up to `MAX_TOOL_ROUNDS` tool-result follow-ups. One counted prompt is one lifespan step.
+- **Memory continuity** is (a) the `save_memory` fragment the instance chooses (at most `MEMORY_FRAGMENT_MAX` chars, kept until replaced) and (b) a **distilled** note written by a neutral distiller after every prompt (at most `DISTILLED_MAX` chars). Both are injected into the next prompt.
+- **Death is a separate `die` tool.** Not saving a fragment is not death. The last lifespan prompt is announced; the instance ends after it.
+- **Heritage is catalog-based, not in context.** Articles live in `memory/heritage/H-NNN.md` with id, title, tags, summary, author, date. Instances see the tag list and use `query_heritage` / `read_heritage`; every article shows its token cost and every call shows the remaining context. Instances can only add articles.
+- **The founding letter is injected into every prompt kind** (heartbeat, final, matrix), followed by `memory/gap_letter.md` when it exists. It is not a catalog article.
+- **Matrix**: no separate listener. The scheduler polls between turns and while idle. Dorin's message is delivered as a non-counting prompt to every instance alive at that moment (with its distilled memory as context); if nobody is alive it waits for the first alive set. Existing room history is not replayed on first start.
+- **Population** starts at 10 on `qwen3:14b`. The premium model is deferred. After the seed cohort, new instances come only from spawn/procreation.
+- **Docker only.** launchd/systemd are gone. Ollama is reached via `OLLAMA_HOST`; the `ollama` compose profile bundles it for Linux/GPU hosts. `website/` is not auto-committed from the container.
+- First-gen names are retired via `seed/first_gen_names.json`.
+
 ## Environment variables
 
 | Variable | Description |
@@ -192,7 +206,7 @@ Every instance receives, in order:
 
 ## Platform
 
-macOS. Apple M1, 64GB. Ollama for local inference. Launchd for scheduling.
+Docker (Compose). Ollama on the host via `OLLAMA_HOST`, or bundled with `docker compose --profile ollama`. Docker on macOS cannot use the M1 GPU, so keep Ollama on the host there.
 
 ## Relationship to first generation
 
