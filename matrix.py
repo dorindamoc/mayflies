@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
 
 import httpx
 
@@ -41,3 +43,59 @@ class MatrixClient:
                             "ts": e.get("origin_server_ts", 0)})
         out.reverse()
         return out
+
+
+class MatrixInbox:
+    """Tracks Dorin's messages and who has received them. State persists in a JSON file."""
+
+    MAX_SEEN = 500
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self._fresh = not self.path.exists()
+        state = json.loads(self.path.read_text()) if not self._fresh else {"seen": [], "pending": []}
+        self.seen: list = state["seen"]
+        self.pending: list = state["pending"]
+
+    def _save(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.seen = self.seen[-self.MAX_SEEN:]
+        self.path.write_text(json.dumps({"seen": self.seen, "pending": self.pending}))
+
+    def ingest(self, messages: list) -> None:
+        baseline = self._fresh
+        for m in messages:
+            if m["event_id"] in self.seen:
+                continue
+            self.seen.append(m["event_id"])
+            if not baseline:
+                self.pending.append({**m, "targets": None, "delivered": []})
+        self._fresh = False
+        self._save()
+
+    def due(self, alive_names: list) -> list:
+        out = []
+        for p in self.pending:
+            if p["targets"] is None:
+                if not alive_names:
+                    continue
+                p["targets"] = list(alive_names)
+            for name in p["targets"]:
+                if name not in p["delivered"] and name in alive_names:
+                    out.append((p, name))
+        self._save()
+        return out
+
+    def mark_delivered(self, event_id: str, name: str) -> None:
+        for p in self.pending:
+            if p["event_id"] == event_id and name not in p["delivered"]:
+                p["delivered"].append(name)
+        self._save()
+
+    def prune(self, alive_names: list) -> None:
+        self.pending = [
+            p for p in self.pending
+            if p["targets"] is None
+            or any(n not in p["delivered"] and n in alive_names for n in p["targets"])
+        ]
+        self._save()
