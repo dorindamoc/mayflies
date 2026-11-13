@@ -3,28 +3,14 @@
 from __future__ import annotations
 
 import fcntl
-import re
 from contextlib import ExitStack
 
 from config import Config
+from proposals import HEADER, parse_votes, proposed_text
 from store import Store, now_utc, read_entries
 
-_HEADER = re.compile(r"^### (P-\d{4}-\d{2}-\d{2}-\d{3}) — (.*)$", re.M)
-_VOTE = re.compile(r"^- (P-\d{4}-\d{2}-\d{2}-\d{3}) \| ([+-]1) \| (.+?) \|", re.M)
-
-
 def _tally(votes_text: str) -> dict:
-    seen, net = set(), {}
-    for pid, v, voter in _VOTE.findall(votes_text):
-        if (pid, voter) in seen:
-            continue
-        seen.add((pid, voter))
-        net[pid] = net.get(pid, 0) + int(v)
-    return net
-
-
-def _proposed_text(block: str) -> str:
-    return block.split("Proposed text:", 1)[1].strip() if "Proposed text:" in block else ""
+    return {pid: sum(v.values()) for pid, v in parse_votes(votes_text).items()}
 
 
 def canonize(cfg: Config) -> list:
@@ -49,7 +35,7 @@ def canonize(cfg: Config) -> list:
 
         promoted, kept = [], []
         for block in read_entries(s.proposals_path):
-            m = _HEADER.match(block)
+            m = HEADER.match(block)
             if m and net.get(m.group(1), 0) >= cfg.vote_threshold:
                 promoted.append((m.group(1), m.group(2), block))
             else:
@@ -60,7 +46,7 @@ def canonize(cfg: Config) -> list:
         day = now_utc().strftime("%Y-%m-%d")
         with open(s.rules_path, "a") as rules, open(archive, "a") as arch:
             for pid, title, block in promoted:
-                rules.write(f"### {pid} — {title} (adopted {day})\n{_proposed_text(block)}\n\n")
+                rules.write(f"### {pid} — {title} (adopted {day})\n{proposed_text(block)}\n\n")
                 arch.write(block + f"\n\nAdopted {day} with net {net[pid]} votes.\n\n")
         proposals_fh.seek(0)
         proposals_fh.truncate()

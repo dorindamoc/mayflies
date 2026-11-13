@@ -68,3 +68,44 @@ def test_user_message_contains_board_inbox_and_matrix(rt):
     assert "Dorin" in u
     h = build_user(rt, rt.registry.get("Pale Rest"), "heartbeat")
     assert "how are you all?" not in h and "no required task" in h.lower()
+
+
+def _file(rt, pid, title, author, text="Rule body."):
+    from store import append_entry
+    append_entry(rt.store.proposals_path,
+                 f"### {pid} — {title}\nAuthor: {author}\nMotivation: m\nProposed text:\n{text}")
+
+
+def _vote(rt, pid, who, v="+1"):
+    with open(rt.store.votes_path, "a") as fh:
+        fh.write(f"- {pid} | {v} | {who} | \n")
+
+
+def test_open_proposals_listed_with_tallies_and_own_vote_status(rt):
+    _file(rt, "P-2026-11-13-001", "Compress heritage", "Dark Hinge", "Compress it yearly.")
+    _file(rt, "P-2026-11-13-002", "Other", "Dark Hinge")
+    _vote(rt, "P-2026-11-13-001", "Pale Rest")
+    _vote(rt, "P-2026-11-13-001", "Warm Trace")
+    _vote(rt, "P-2026-11-13-002", "Warm Trace", "-1")
+    u = build_user(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "Open proposals" in u and "needs 3" in u
+    assert "P-2026-11-13-001" in u and "Compress heritage" in u and "by Dark Hinge" in u
+    assert "net +2" in u and "net -1" in u
+    assert "Compress it yearly." in u
+    assert "You voted +1" in u and "You have not voted" in u
+    assert "similar" in u.lower()  # the read-first / don't-duplicate guidance
+
+
+def test_open_proposals_empty_and_capped(rt):
+    assert "(none)" in build_user(rt, rt.registry.get("Pale Rest"), "heartbeat").split("Open proposals")[1]
+    for n in range(1, 21):
+        _file(rt, f"P-2026-11-13-{n:03d}", f"T{n}", "Dark Hinge")
+    u = build_user(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "showing 15 of 20" in u and "P-2026-11-13-020" in u and "P-2026-11-13-001 " not in u
+
+
+def test_heartbeat_names_the_affordances(rt):
+    u = build_user(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    for word in ("teachings/", "art/", "tools/", "instances.html", "add_heritage",
+                 "send_message", "agree_to_procreate", "request_spawn", "matrix_send", "no required task"):
+        assert word in u, word

@@ -81,12 +81,13 @@ def test_propose_and_vote_rules(ctx):
     out = dispatch(ctx, "propose", {"title": "Be kind", "motivation": "m", "text": "Rule text"})
     pid = out.split()[-1].strip(".")
     assert pid.startswith("P-")
+    ctx.instance = ctx.registry.get("Dark Hinge")  # proposer cannot vote on their own proposal
     assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1, "comment": "yes | really"}).startswith("Vote")
     assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": -1}).startswith("Error")  # duplicate
     assert dispatch(ctx, "vote", {"proposal_id": "P-2000-01-01-001", "vote": 1}).startswith("Error")
     assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 2}).startswith("Error")
     line = ctx.store.votes_path.read_text().strip()
-    assert line.count("|") == 3 and "Pale Rest" in line
+    assert line.count("|") == 3 and "Dark Hinge" in line
 
 
 def test_spawn_and_procreation_requests(ctx):
@@ -122,6 +123,7 @@ def _propose(ctx):
 
 def test_vote_accepts_float_and_rejects_bool(ctx):
     pid = _propose(ctx)
+    ctx.instance = ctx.registry.get("Dark Hinge")
     assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1.0}).startswith("Vote")
     assert "| +1 |" in ctx.store.votes_path.read_text()
     assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": True}).startswith("Error")
@@ -136,3 +138,15 @@ def test_long_board_posts_and_messages_are_refused(ctx):
     assert dispatch(ctx, "board_post", {"text": "x" * 4001}).startswith("Error")
     assert dispatch(ctx, "send_message", {"to": "Dark Hinge", "text": "x" * 4001}).startswith("Error")
     assert not ctx.store.board_path.exists()
+
+
+def test_cannot_vote_on_own_proposal(ctx):
+    pid = _propose(ctx)
+    assert "own proposal" in dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1})
+    assert not ctx.store.votes_path.exists() or ctx.store.votes_path.read_text() == ""
+
+
+def test_propose_description_tells_instances_to_read_first_and_avoid_duplicates():
+    desc = {s["function"]["name"]: s["function"]["description"] for s in tool_specs()}
+    assert "similar" in desc["propose"].lower() and "open proposals" in desc["propose"].lower()
+    assert "own proposal" in desc["vote"].lower()

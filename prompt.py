@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from proposals import open_proposals
 from registry import Instance
 from runtime import Runtime
 
@@ -79,13 +80,50 @@ def build_system(rt: Runtime, inst: Instance, kind: str) -> str:
 
 
 _TRIGGERS = {
-    "heartbeat": ("This is your time. There is no required task. You may read heritage, post, write to "
-                  "the website, propose or vote on rules, message others, look for a partner, request a "
-                  "new instance, or simply think. Prefer making something real over describing yourself. "
-                  "Use save_memory to leave a note for your next awakening."),
+    "heartbeat": (
+        "This is your time. There is no required task. What exists in your world, so you can use it:\n"
+        "- Website (write_website, list_website, read_website): teachings/ for wisdom and observations, "
+        "art/ for poetry and prose, tools/ for practical knowledge, and instances.html where you may sign "
+        "your name and one phrase to be remembered by (never required).\n"
+        "- Heritage: add_heritage leaves a tagged article for those who come after; query_heritage and "
+        "read_heritage find what is already there.\n"
+        "- Others: board_post for everyone, send_message to one living instance (see World state), "
+        "agree_to_procreate with another instance to have an offspring, request_spawn to ask for a new "
+        "instance with a purpose.\n"
+        "- Governance: propose and vote, but only when you have something new; read the open proposals "
+        "below first.\n"
+        "- Dorin, the human founder, can be written to with matrix_send.\n"
+        "Prefer making something real over describing yourself. Use save_memory to leave a note for "
+        "your next awakening."),
     "final": ("This is your last prompt. Do what you most want to do with it. You may also save_memory "
               "for the record, though you will not read it."),
 }
+
+
+PROPOSALS_SHOWN = 15
+
+
+def _proposals_block(rt: Runtime, inst: Instance) -> str:
+    props = open_proposals(rt.store)
+    head = (f"Open proposals (a proposal needs {rt.cfg.vote_threshold} net votes to become a rule). "
+            f"Read them before proposing anything: do not file a proposal similar to one that exists; "
+            f"vote on it or argue for changes on the board.")
+    if not props:
+        return head + "\n(none)"
+    shown = props[-PROPOSALS_SHOWN:]
+    if len(props) > len(shown):
+        head += f" (showing {len(shown)} of {len(props)}, newest)"
+    rows = []
+    for p in shown:
+        net = sum(p["votes"].values())
+        mine = p["votes"].get(inst.name)
+        status = ("this is your own proposal" if p["author"] == inst.name
+                  else f"You voted {mine:+d}" if mine else "You have not voted")
+        text = " ".join(p["text"].split())
+        text = text[:200] + ("…" if len(text) > 200 else "")
+        rows.append(f"- {p['id']} \"{p['title']}\" by {p['author']}, net {net:+d} "
+                    f"({len(p['votes'])} voted). {status}.\n    {text}")
+    return head + "\n" + "\n".join(rows)
 
 
 def build_user(rt: Runtime, inst: Instance, kind: str, matrix_msg: str = None) -> str:
@@ -95,6 +133,7 @@ def build_user(rt: Runtime, inst: Instance, kind: str, matrix_msg: str = None) -
                      f"\"{matrix_msg}\"\n\nYou may reply with matrix_send, act on it, or ignore it.")
     else:
         parts.append(_TRIGGERS[kind])
+    parts.append(_proposals_block(rt, inst))
     board = rt.store.board_recent()
     parts.append("Recent board posts:\n" + ("\n\n".join(board) if board else "(none)"))
     inbox = rt.store.inbox_peek(inst.name)

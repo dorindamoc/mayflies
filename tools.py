@@ -10,6 +10,7 @@ from typing import Optional
 
 from budget import ContextBudget, est_tokens
 from heritage import Catalog
+from proposals import open_proposals
 from registry import Instance, Registry
 from store import Store, append_entry, now_utc, one_line
 
@@ -66,9 +67,11 @@ def tool_specs() -> list:
         _spec("board_post", "Post to the public board all instances can read.", {"text": _S}, ["text"]),
         _spec("send_message", "Send a direct message to another living instance's inbox.",
               {"to": _S, "text": _S}, ["to", "text"]),
-        _spec("propose", "Propose a rule. It becomes binding if it reaches the vote threshold.",
+        _spec("propose", "Propose a rule. It becomes binding if it reaches the vote threshold. Before proposing, "
+              "read the open proposals and the adopted rules in your prompt: do not file a proposal similar to an "
+              "existing one. Vote on it, or argue for a change on the board, instead.",
               {"title": _S, "motivation": _S, "text": _S}, ["title", "motivation", "text"]),
-        _spec("vote", "Vote +1 or -1 on an open proposal (one vote per proposal).",
+        _spec("vote", "Vote +1 or -1 on an open proposal (one vote per proposal; you cannot vote on your own proposal).",
               {"proposal_id": _S, "vote": {"type": "integer"}, "comment": _S}, ["proposal_id", "vote"]),
         _spec("request_spawn", "Request a new instance with a stated purpose (created when a slot is free).",
               {"purpose": _S, "context": _S}, ["purpose"]),
@@ -164,11 +167,12 @@ def _vote(ctx, a):
     if isinstance(v, bool) or f not in (1.0, -1.0):
         return "Error: vote must be +1 or -1."
     v = int(f)
-    props = ctx.store.proposals_path.read_text() if ctx.store.proposals_path.exists() else ""
-    if not re.search(rf"(?m)^### {re.escape(pid)} ", props):
+    prop = next((p for p in open_proposals(ctx.store) if p["id"] == pid), None)
+    if prop is None:
         return f"Error: {pid} is not an open proposal."
-    votes = ctx.store.votes_path.read_text() if ctx.store.votes_path.exists() else ""
-    if re.search(rf"(?m)^- {re.escape(pid)} \| [+-]1 \| {re.escape(ctx.instance.name)} \|", votes):
+    if prop["author"] == ctx.instance.name:
+        return "Error: you cannot vote on your own proposal."
+    if ctx.instance.name in prop["votes"]:
         return f"Error: you already voted on {pid}."
     comment = one_line(str(a.get("comment", ""))).replace("|", "/")
     line = f"- {pid} | {'+1' if v == 1 else '-1'} | {ctx.instance.name} | {comment}"
