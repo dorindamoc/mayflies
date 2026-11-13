@@ -6,8 +6,7 @@ state.json
 *.lock
 
 # Memory & runtime state — instance-generated, not tracked (seed/ is tracked)
-memory/*
-!memory/heritage.md
+memory/
 messages/
 
 # Logs
