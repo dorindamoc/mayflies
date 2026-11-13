@@ -5,10 +5,10 @@
 state.json
 *.lock
 
-# Memory — instance-generated data, not tracked
-# heritage.md is the founding letter and IS tracked
+# Memory & runtime state — instance-generated, not tracked (seed/ is tracked)
 memory/*
 !memory/heritage.md
+messages/
 
 # Logs
 logs/
