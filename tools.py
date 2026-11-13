@@ -65,6 +65,11 @@ def tool_specs() -> list:
         _spec("add_heritage", "Add a new heritage article (permanent, append-only). Give 1-6 tags and a one-line summary.",
               {"title": _S, "tags": _TAGS, "summary": _S, "body": _S}, ["title", "tags", "summary", "body"]),
         _spec("board_post", "Post to the public board all instances can read.", {"text": _S}, ["text"]),
+        _spec("list_board", "List board posts (newest last) as an index: number, author, time, token cost, a short "
+              "preview. Optional author filter and limit (default 20 newest). Shows remaining context.",
+              {"author": _S, "limit": {"type": "integer"}}),
+        _spec("read_board", "Read board posts by number (from list_board). Each costs its listed tokens from "
+              "your remaining context.", {"ids": {"type": "array", "items": {"type": "integer"}}}, ["ids"]),
         _spec("send_message", "Send a direct message to another living instance's inbox.",
               {"to": _S, "text": _S}, ["to", "text"]),
         _spec("propose", "Propose a rule. It becomes binding if it reaches the vote threshold. Before proposing, "
@@ -137,6 +142,54 @@ def _add_heritage(ctx, a):
 def _board_post(ctx, a):
     ctx.store.board_post(ctx.instance.name, _check_len(a["text"], "post"))
     return "Posted to the board."
+
+
+BOARD_LIST_DEFAULT = 20
+BOARD_READ_MAX = 10
+
+
+def _board_cost(post) -> int:
+    return est_tokens(post["text"])
+
+
+def _list_board(ctx, a):
+    posts = ctx.store.board_index()
+    if a.get("author"):
+        posts = [p for p in posts if p["author"] == str(a["author"])]
+    try:
+        limit = int(a.get("limit") or BOARD_LIST_DEFAULT)
+    except (TypeError, ValueError):
+        limit = BOARD_LIST_DEFAULT
+    posts = posts[-max(1, limit):]
+    if not posts:
+        return "No board posts.\n" + _remaining(ctx)
+    rows = [f"{p['n']} | {p['author']} | {p['when']} | {_board_cost(p)} tokens | {one_line(p['text'])[:80]}"
+            for p in posts]
+    return "\n".join(rows) + "\n" + _remaining(ctx)
+
+
+def _read_board(ctx, a):
+    ids = a["ids"]
+    ids = [ids] if not isinstance(ids, (list, tuple)) else list(ids)
+    if not ids or len(ids) > BOARD_READ_MAX:
+        return f"Error: give between 1 and {BOARD_READ_MAX} post numbers."
+    by_n = {p["n"]: p for p in ctx.store.board_index()}
+    chosen = []
+    for raw in ids:
+        try:
+            post = by_n.get(int(raw))
+        except (TypeError, ValueError):
+            post = None
+        if post is None:
+            return f"Error: no board post {raw!r}."
+        chosen.append(post)
+    cost = sum(_board_cost(p) for p in chosen)
+    if not ctx.budget.fits(cost):
+        return (f"Not enough context: these posts cost {cost} tokens, "
+                f"you have {ctx.budget.remaining} remaining. Nothing was read.")
+    ctx.budget.spend(cost)
+    body = "\n\n".join(f"#{p['n']} [{p['when']}] {p['author']}\n{p['text']}" for p in chosen)
+    return body + "\n" + _remaining(ctx)
 
 
 def _send_message(ctx, a):
@@ -265,7 +318,8 @@ def _die(ctx, a):
 
 HANDLERS = {
     "query_heritage": _query_heritage, "read_heritage": _read_heritage, "add_heritage": _add_heritage,
-    "board_post": _board_post, "send_message": _send_message, "propose": _propose, "vote": _vote,
+    "board_post": _board_post, "list_board": _list_board, "read_board": _read_board,
+    "send_message": _send_message, "propose": _propose, "vote": _vote,
     "request_spawn": _request_spawn, "agree_to_procreate": _agree_to_procreate,
     "list_website": _list_website, "read_website": _read_website, "write_website": _write_website,
     "matrix_send": _matrix_send, "matrix_send_friend": _matrix_send_friend,
@@ -284,6 +338,6 @@ def dispatch(ctx: ToolContext, name: str, arguments: dict) -> str:
     except Exception as e:  # tool failures must never crash a turn
         result = f"Error: {e}"
     ctx.outcome.actions.append(f"{name}: {one_line(json.dumps(arguments, default=str))[:120]}")
-    if name != "read_heritage":
+    if name not in ("read_heritage", "read_board"):
         ctx.budget.spend(est_tokens(result))
     return result

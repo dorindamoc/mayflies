@@ -100,3 +100,17 @@ def test_tool_calls_in_capped_round_are_executed(cfg):
     replies.append(LLMReply("", [ToolCall("save_memory", {"text": "late"})]))
     rt = make_rt(cfg, replies)
     assert run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat").fragment == "late"
+
+
+def test_turn_uses_the_instances_own_sampling_but_distiller_stays_neutral(cfg):
+    rt = make_rt(cfg, [LLMReply("a"), LLMReply("n"), LLMReply("b"), LLMReply("n")])
+    wild = rt.registry.get("Pale Rest")
+    wild.traits = {"optimism": 5, "skepticism": 5, "artistry": 10, "exploration": 10, "decisiveness": 1}
+    calm = rt.registry.get("Dark Hinge")
+    calm.traits = {"optimism": 5, "skepticism": 5, "artistry": 1, "exploration": 1, "decisiveness": 10}
+    run_prompt(rt, wild, "heartbeat")
+    run_prompt(rt, calm, "heartbeat")
+    assert rt.llm.calls[0]["options"]["temperature"] == cfg.temperature_max
+    assert rt.llm.calls[2]["options"]["temperature"] == cfg.temperature_min
+    assert rt.llm.calls[0]["options"]["presence_penalty"] == cfg.presence_penalty
+    assert rt.llm.calls[1]["options"] is None and rt.llm.calls[3]["options"] is None

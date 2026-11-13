@@ -37,3 +37,11 @@ def test_env_overrides(tmp_path):
 def test_validation(tmp_path, env):
     with pytest.raises(ValueError):
         Config.from_env(home=tmp_path, env=env)
+
+
+def test_sampling_config_defaults_and_overrides(tmp_path):
+    cfg = Config.from_env(home=tmp_path, env={})
+    assert (cfg.temperature_min, cfg.temperature_max, cfg.presence_penalty) == (0.6, 1.1, 0.5)
+    cfg = Config.from_env(home=tmp_path, env={"TEMPERATURE_MIN": "0.7", "TEMPERATURE_MAX": "1.3",
+                                              "PRESENCE_PENALTY": "0"})
+    assert (cfg.temperature_min, cfg.temperature_max, cfg.presence_penalty) == (0.7, 1.3, 0.0)

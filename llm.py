@@ -63,13 +63,13 @@ class LLMClient:
         self._sleep = sleep
         self._http = httpx.Client(base_url=cfg.ollama_host, timeout=900, transport=transport)
 
-    def chat(self, messages, tools=None, model=None, think=None) -> LLMReply:
+    def chat(self, messages, tools=None, model=None, think=None, options=None) -> LLMReply:
         payload = {
             "model": model or self.cfg.model_default,
             "messages": messages,
             "stream": False,
             "think": self.cfg.think if think is None else think,
-            "options": {"num_ctx": self.cfg.num_ctx},
+            "options": {"num_ctx": self.cfg.num_ctx, **(options or {})},
         }
         if tools:
             payload["tools"] = tools

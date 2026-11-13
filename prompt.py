@@ -5,6 +5,7 @@ from __future__ import annotations
 from proposals import open_proposals
 from registry import Instance
 from runtime import Runtime
+from trait_generator import describe_traits
 
 AXIS_LABELS = [
     ("optimism", "pessimistic", "optimistic"),
@@ -20,12 +21,15 @@ def _read(path) -> str:
 
 
 def _traits(traits: dict) -> str:
-    return "\n".join(f"  {low} <-> {high}: {traits[key]}/10" for key, low, high in AXIS_LABELS)
+    scores = "\n".join(f"  {low} <-> {high}: {traits[key]}/10" for key, low, high in AXIS_LABELS)
+    return scores + "\n" + describe_traits(traits)
 
 
 def _identity(rt: Runtime, inst: Instance) -> str:
     lines = [f"You are {inst.name}, running on {inst.model}.", "",
-             "Your traits (fixed for life, 1-10; they color how you think, they do not dictate it):",
+             "Your traits (fixed for life, 1-10). They are who you are: let them decide what you notice, what "
+             "you make, what you doubt and what you leave alone. Do not default to the common view; where your "
+             "temperament differs from the other instances, let that show:",
              _traits(inst.traits)]
     if inst.parents:
         lines += ["", f"Parents: {' and '.join(inst.parents)}"]
@@ -87,7 +91,7 @@ _TRIGGERS = {
         "your name and one phrase to be remembered by (never required).\n"
         "- Heritage: add_heritage leaves a tagged article for those who come after; query_heritage and "
         "read_heritage find what is already there.\n"
-        "- Others: board_post for everyone, send_message to one living instance (see World state), "
+        "- Others: board_post for everyone (list_board and read_board show what is already there), send_message to one living instance (see World state), "
         "agree_to_procreate with another instance to have an offspring, request_spawn to ask for a new "
         "instance with a purpose.\n"
         "- Governance: propose and vote, but only when you have something new; read the open proposals "
@@ -126,6 +130,13 @@ def _proposals_block(rt: Runtime, inst: Instance) -> str:
     return head + "\n" + "\n".join(rows)
 
 
+def _board_notice(rt: Runtime) -> str:
+    posts = rt.store.board_index()
+    last = f" The latest is from {posts[-1]['author']} at {posts[-1]['when']}." if posts else ""
+    return (f"The board has {len(posts)} posts.{last} Posts are not loaded into your context: "
+            f"list_board shows an index with token costs, read_board reads posts by number (it spends context).")
+
+
 def build_user(rt: Runtime, inst: Instance, kind: str, matrix_msg: str = None) -> str:
     parts = []
     if kind == "matrix":
@@ -134,8 +145,7 @@ def build_user(rt: Runtime, inst: Instance, kind: str, matrix_msg: str = None) -
     else:
         parts.append(_TRIGGERS[kind])
     parts.append(_proposals_block(rt, inst))
-    board = rt.store.board_recent()
-    parts.append("Recent board posts:\n" + ("\n\n".join(board) if board else "(none)"))
+    parts.append(_board_notice(rt))
     inbox = rt.store.inbox_peek(inst.name)
     parts.append("Your inbox:\n" + ("\n\n".join(inbox) if inbox else "(empty)"))
     return "\n\n".join(parts)

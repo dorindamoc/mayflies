@@ -26,6 +26,9 @@ class Config:
     vote_threshold: int = 3
     heartbeat_interval: int = 3600
     board_recent: int = 20
+    temperature_min: float = 0.6
+    temperature_max: float = 1.1
+    presence_penalty: float = 0.5
     friend_message_limit: int = 10
     matrix_poll_seconds: int = 30
     matrix_homeserver: str = ""
@@ -102,6 +105,9 @@ class Config:
             vote_threshold=i("VOTE_THRESHOLD", cls.vote_threshold),
             heartbeat_interval=i("HEARTBEAT_INTERVAL", cls.heartbeat_interval),
             board_recent=i("BOARD_RECENT", cls.board_recent),
+            temperature_min=float(env.get("TEMPERATURE_MIN", cls.temperature_min)),
+            temperature_max=float(env.get("TEMPERATURE_MAX", cls.temperature_max)),
+            presence_penalty=float(env.get("PRESENCE_PENALTY", cls.presence_penalty)),
             friend_message_limit=i("FRIEND_MESSAGE_LIMIT", cls.friend_message_limit),
             matrix_poll_seconds=i("MATRIX_POLL_SECONDS", cls.matrix_poll_seconds),
             matrix_homeserver=s("MATRIX_HOMESERVER", "").rstrip("/"),

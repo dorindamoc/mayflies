@@ -60,11 +60,12 @@ def test_parents_with_traits_shown(rt):
     assert "Parents: Pale Rest and Dark Hinge" in s
 
 
-def test_user_message_contains_board_inbox_and_matrix(rt):
+def test_user_message_contains_inbox_and_matrix_but_not_board_text(rt):
     rt.store.board_post("Dark Hinge", "is this performance?")
     rt.store.inbox_append("Pale Rest", "Dark Hinge", "private hello")
     u = build_user(rt, rt.registry.get("Pale Rest"), "matrix", matrix_msg="how are you all?")
-    assert "is this performance?" in u and "private hello" in u and "how are you all?" in u
+    assert "private hello" in u and "how are you all?" in u
+    assert "is this performance?" not in u
     assert "Dorin" in u
     h = build_user(rt, rt.registry.get("Pale Rest"), "heartbeat")
     assert "how are you all?" not in h and "no required task" in h.lower()
@@ -109,3 +110,20 @@ def test_heartbeat_names_the_affordances(rt):
     for word in ("teachings/", "art/", "tools/", "instances.html", "add_heritage",
                  "send_message", "agree_to_procreate", "request_spawn", "matrix_send", "no required task"):
         assert word in u, word
+
+
+def test_board_is_announced_not_loaded(rt):
+    me = rt.registry.get("Pale Rest")
+    assert "0 posts" in build_user(rt, me, "heartbeat")
+    rt.store.board_post("Dark Hinge", "is this performance?")
+    rt.store.board_post("Dark Hinge", "again")
+    u = build_user(rt, me, "heartbeat")
+    assert "2 posts" in u and "Dark Hinge" in u and "list_board" in u and "read_board" in u
+    assert "is this performance?" not in u
+
+
+def test_traits_are_described_in_prose_for_extremes(rt):
+    me = rt.registry.get("Pale Rest")
+    me.traits = {"optimism": 5, "skepticism": 10, "artistry": 5, "exploration": 5, "decisiveness": 5}
+    s = build_system(rt, me, "heartbeat")
+    assert "doubt" in s and "do not dictate" not in s

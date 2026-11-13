@@ -22,7 +22,7 @@ def ctx(cfg):
 
 def test_specs_cover_tools_and_exclude_rules_writes():
     names = {s["function"]["name"] for s in tool_specs()}
-    assert {"query_heritage", "read_heritage", "save_memory", "die", "propose", "vote"} <= names
+    assert {"query_heritage", "read_heritage", "save_memory", "die", "propose", "vote", "list_board", "read_board"} <= names
     assert not any("rules" in n or "registry" in n for n in names)
 
 
@@ -150,3 +150,45 @@ def test_propose_description_tells_instances_to_read_first_and_avoid_duplicates(
     desc = {s["function"]["name"]: s["function"]["description"] for s in tool_specs()}
     assert "similar" in desc["propose"].lower() and "open proposals" in desc["propose"].lower()
     assert "own proposal" in desc["vote"].lower()
+
+
+def _fill_board(ctx):
+    ctx.store.board_post("Dark Hinge", "first post about rivers " + "x" * 400)
+    ctx.store.board_post("Pale Rest", "my own post")
+    ctx.store.board_post("Dark Hinge", "third post")
+
+
+def test_list_board_shows_index_with_cost_not_bodies(ctx):
+    _fill_board(ctx)
+    out = dispatch(ctx, "list_board", {})
+    assert "1 |" in out and "2 |" in out and "3 |" in out and "Dark Hinge" in out and "tokens" in out
+    assert "context remaining" in out
+    assert "x" * 400 not in out
+
+
+def test_list_board_filters_by_author_and_limits_to_newest(ctx):
+    _fill_board(ctx)
+    out = dispatch(ctx, "list_board", {"author": "Dark Hinge"})
+    assert "2 |" not in out and "1 |" in out and "3 |" in out
+    newest = dispatch(ctx, "list_board", {"limit": 1})
+    assert "3 |" in newest and "1 |" not in newest
+
+
+def test_read_board_returns_posts_and_spends_context(ctx):
+    _fill_board(ctx)
+    before = ctx.budget.remaining
+    out = dispatch(ctx, "read_board", {"ids": [1, 3]})
+    assert "first post about rivers" in out and "third post" in out and "my own post" not in out
+    assert ctx.budget.remaining < before
+    spent = before - ctx.budget.remaining
+    assert spent < 400  # counted once, not twice (no double charge for the result text)
+
+
+def test_read_board_refuses_when_it_does_not_fit_and_on_bad_ids(ctx):
+    _fill_board(ctx)
+    ctx.budget.spend(ctx.budget.remaining - 5)
+    out = dispatch(ctx, "read_board", {"ids": [1]})
+    assert out.startswith("Not enough context") and "first post" not in out
+    ctx.budget = ContextBudget(32768, 2048)
+    assert dispatch(ctx, "read_board", {"ids": [99]}).startswith("Error")
+    assert dispatch(ctx, "read_board", {"ids": 2}).count("my own post") == 1

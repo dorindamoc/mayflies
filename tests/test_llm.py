@@ -94,3 +94,14 @@ def test_malformed_native_tool_call_is_skipped(cfg):
             {"function": {}}, {"nofunction": 1}, {"function": {"name": "die", "arguments": {}}}]}})
 
     assert client(cfg, handler).chat([]).tool_calls == [ToolCall("die", {})]
+
+
+def test_per_call_options_merge_with_num_ctx(cfg):
+    seen = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": "hi"}})
+
+    client(cfg, handler).chat([{"role": "user", "content": "x"}], options={"temperature": 0.9})
+    assert seen["options"] == {"num_ctx": 32768, "temperature": 0.9}

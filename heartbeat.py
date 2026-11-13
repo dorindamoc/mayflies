@@ -11,6 +11,7 @@ from llm import LLMError
 from prompt import build_system, build_user
 from runtime import Runtime
 from tools import ToolContext, TurnOutcome, dispatch, tool_specs
+from trait_generator import sampling_options
 
 
 @dataclass
@@ -34,10 +35,11 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
 
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     specs = tool_specs()
+    sampling = sampling_options(inst.traits, cfg.temperature_min, cfg.temperature_max, cfg.presence_penalty)
     text = ""
     for round_no in range(cfg.max_tool_rounds + 1):
         try:
-            reply = rt.llm.chat(messages, tools=specs)
+            reply = rt.llm.chat(messages, tools=specs, options=sampling)
         except LLMError:
             if round_no == 0:
                 raise  # nothing happened yet: the prompt can be retried whole

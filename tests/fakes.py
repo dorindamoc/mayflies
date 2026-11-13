@@ -8,8 +8,8 @@ class FakeLLM:
         self.replies = list(replies)
         self.calls = []
 
-    def chat(self, messages, tools=None, model=None, think=None):
-        self.calls.append({"messages": [dict(m) for m in messages], "tools": tools, "model": model})
+    def chat(self, messages, tools=None, model=None, think=None, options=None):
+        self.calls.append({"messages": [dict(m) for m in messages], "tools": tools, "model": model, "options": options})
         if not self.replies:
             return LLMReply(content="(fake llm: no more replies)", tool_calls=[])
         r = self.replies.pop(0)

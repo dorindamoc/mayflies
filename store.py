@@ -68,6 +68,16 @@ class Store:
         n = n or self.cfg.board_recent
         return read_entries(self.board_path)[-n:]
 
+    def board_index(self) -> list[dict]:
+        """Every board post as {n, when, author, text}; n is its 1-based position (the board is append-only)."""
+        rows = []
+        for n, block in enumerate(read_entries(self.board_path), start=1):
+            head, _, body = block.partition("\n")
+            m = re.match(r"### \[(.*?)\] (.*)", head)
+            rows.append({"n": n, "when": m.group(1) if m else "", "author": m.group(2) if m else "?",
+                         "text": body.strip()})
+        return rows
+
     # --- inboxes ---
     def _inbox(self, name: str) -> Path:
         return self.cfg.messages_dir / _file_name(name)
