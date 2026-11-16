@@ -29,9 +29,6 @@ class MatrixClient:
     def send(self, message: str) -> str:
         return self._put(self.cfg.matrix_room_id, message)
 
-    def send_friend(self, message: str) -> str:
-        return self._put(self.cfg.matrix_friend_room_id, message)
-
     def fetch_human_messages(self, limit: int = 20) -> list:
         resp = self._http.get(f"/_matrix/client/v3/rooms/{self.cfg.matrix_room_id}/messages",
                               params={"dir": "b", "limit": str(limit), "filter": json.dumps(

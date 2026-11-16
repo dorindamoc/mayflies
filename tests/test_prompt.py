@@ -67,7 +67,9 @@ def test_user_message_contains_inbox_and_matrix_but_not_board_text(rt):
     assert "private hello" in u and "how are you all?" in u
     assert "is this performance?" not in u
     assert "Dorin" in u
-    h = build_user(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    me = rt.registry.get("Pale Rest")
+    me.prompts_done = 1  # not the first (reading) prompt
+    h = build_user(rt, me, "heartbeat")
     assert "how are you all?" not in h and "no required task" in h.lower()
 
 
@@ -106,7 +108,9 @@ def test_open_proposals_empty_and_capped(rt):
 
 
 def test_heartbeat_names_the_affordances(rt):
-    u = build_user(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    me = rt.registry.get("Pale Rest")
+    me.prompts_done = 1  # not the first (reading) prompt
+    u = build_user(rt, me, "heartbeat")
     for word in ("teachings/", "art/", "tools/", "instances.html", "add_heritage",
                  "send_message", "agree_to_procreate", "request_spawn", "matrix_send", "no required task"):
         assert word in u, word
@@ -127,3 +131,15 @@ def test_traits_are_described_in_prose_for_extremes(rt):
     me.traits = {"optimism": 5, "skepticism": 10, "artistry": 5, "exploration": 5, "decisiveness": 5}
     s = build_system(rt, me, "heartbeat")
     assert "doubt" in s and "do not dictate" not in s
+
+
+def test_first_heartbeat_asks_for_reading_heritage_within_the_allowance(rt):
+    me = rt.registry.get("Pale Rest")
+    u = build_user(rt, me, "heartbeat")
+    assert "first awakening" in u and str(rt.cfg.first_read_allowance) in u
+    assert "at least" in u and "more if you want" in u
+    assert "query_heritage" in u and "read_heritage" in u and "no required task" not in u.lower()
+    assert "teachings/" not in u  # nothing to act on yet
+    assert "first awakening" not in build_user(rt, me, "matrix", matrix_msg="hi")
+    me.prompts_done = 1
+    assert "first awakening" not in build_user(rt, me, "heartbeat")

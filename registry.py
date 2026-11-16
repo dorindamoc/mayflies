@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
@@ -34,8 +35,28 @@ class Registry:
             for d in json.loads(self.path.read_text()):
                 self._items[d["name"]] = Instance(**d)
 
-    def new_instance(self, name: str, traits: dict, parents=()) -> Instance:
-        return Instance(name=name, model=self.cfg.model_default, traits=dict(traits),
+    def pick_model(self, parents=(), rng=None, mutation_rate: float = 0.15) -> str:
+        """Offspring inherit a parent's model (small chance of a weighted-random one); everyone else gets
+        the pool model furthest below its weighted share of the living population."""
+        rng = rng or random
+        pool = self.cfg.models
+        weights = [self.cfg.model_weights.get(m, 1) for m in pool]
+        parents = [p for p in parents if p is not None and p.model]
+        if parents:
+            if rng.random() < mutation_rate:
+                return rng.choices(pool, weights=weights)[0]
+            return rng.choice(parents).model
+        alive = self.alive()
+        total = sum(weights)
+        deficit = {m: w / total * (len(alive) + 1) - sum(1 for i in alive if i.model == m)
+                   for m, w in zip(pool, weights)}
+        best = max(deficit.values())
+        return rng.choice([m for m in pool if deficit[m] >= best - 1e-9])
+
+    def new_instance(self, name: str, traits: dict, parents=(), model: str = None) -> Instance:
+        if model is None:
+            model = self.pick_model([self.get(p) if isinstance(p, str) else p for p in parents])
+        return Instance(name=name, model=model, traits=dict(traits),
                         lifespan=self.cfg.lifespan_prompts, parents=list(parents), born_at=stamp())
 
     def add(self, inst: Instance) -> None:

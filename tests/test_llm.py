@@ -105,3 +105,37 @@ def test_per_call_options_merge_with_num_ctx(cfg):
 
     client(cfg, handler).chat([{"role": "user", "content": "x"}], options={"temperature": 0.9})
     assert seen["options"] == {"num_ctx": 32768, "temperature": 0.9}
+
+
+def test_think_flag_follows_the_models_setting(tmp_path):
+    from config import Config
+    cfg2 = Config.from_env(home=tmp_path, env={"THINK": "false", "MODEL_THINK": "qwen3:27b=true"})
+    seen = []
+
+    def handler(req):
+        seen.append(json.loads(req.content))
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": "ok"}})
+
+    c = client(cfg2, handler)
+    c.chat([], model="qwen3:27b")
+    c.chat([], model="llama3:70b")
+    c.chat([], model="qwen3:27b", think=False)
+    assert [b["think"] for b in seen] == [True, False, False]
+
+
+def test_model_without_thinking_support_is_retried_without_think_and_remembered(cfg):
+    bodies = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        bodies.append(body)
+        if "think" in body and body["model"] == "llama3:70b":
+            return httpx.Response(400, json={"error": "\"llama3:70b\" does not support thinking"})
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": "ok"}})
+
+    c = client(cfg, handler)
+    assert c.chat([{"role": "user", "content": "x"}], model="llama3:70b").content == "ok"
+    assert c.chat([{"role": "user", "content": "y"}], model="llama3:70b").content == "ok"
+    assert ["think" in b for b in bodies] == [True, False, False]
+    c.chat([{"role": "user", "content": "z"}], model="qwen3:14b")
+    assert "think" in bodies[-1]

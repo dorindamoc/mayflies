@@ -39,7 +39,6 @@ ENV_PROMPTS = [
     ("MATRIX_HUMAN_USER", "Your Matrix user ID", ""),
     ("MATRIX_HUMAN_NAME", "Your name", "Dorin"),
     ("MATRIX_ROOM_ID", "Shared room ID", ""),
-    ("MATRIX_FRIEND_ROOM_ID", "AI friend room ID (optional)", ""),
     ("OLLAMA_HOST", "Ollama endpoint", "http://host.docker.internal:11434"),
 ]
 

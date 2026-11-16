@@ -27,5 +27,5 @@ def distill(llm, cfg: Config, inst, kind: str, final_text: str, actions: list) -
             f"Actions taken this prompt:\n{acts}\n"
             f"Final words this prompt:\n{final_text or '(none)'}")
     reply = llm.chat([{"role": "system", "content": SYSTEM.format(limit=cfg.distilled_max)},
-                      {"role": "user", "content": user}], tools=None, think=False)
+                      {"role": "user", "content": user}], tools=None, think=False, model=inst.model)
     return _truncate(reply.content, cfg.distilled_max)

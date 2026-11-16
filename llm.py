@@ -61,16 +61,20 @@ class LLMClient:
     def __init__(self, cfg: Config, transport=None, sleep=time.sleep):
         self.cfg = cfg
         self._sleep = sleep
+        self._no_think: set = set()  # models that reject the think flag
         self._http = httpx.Client(base_url=cfg.ollama_host, timeout=900, transport=transport)
 
     def chat(self, messages, tools=None, model=None, think=None, options=None) -> LLMReply:
+        model = model or self.cfg.model_default
         payload = {
-            "model": model or self.cfg.model_default,
+            "model": model,
             "messages": messages,
             "stream": False,
-            "think": self.cfg.think if think is None else think,
+            "think": self.cfg.think_for(model) if think is None else think,
             "options": {"num_ctx": self.cfg.num_ctx, **(options or {})},
         }
+        if model in self._no_think:
+            payload.pop("think")
         if tools:
             payload["tools"] = tools
 
@@ -84,6 +88,11 @@ class LLMClient:
             except ValueError as e:
                 raise LLMError(f"ollama returned a non-JSON body: {e}") from e
             except httpx.HTTPStatusError as e:
+                if (e.response.status_code == 400 and "think" in payload
+                        and "does not support thinking" in e.response.text.lower()):
+                    self._no_think.add(model)
+                    payload.pop("think")
+                    continue  # retry at once without the flag; not a transient failure
                 if e.response.status_code < 500:
                     raise LLMError(f"ollama rejected request: {e}") from e
                 if delay is None:

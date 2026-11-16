@@ -83,6 +83,24 @@ def build_system(rt: Runtime, inst: Instance, kind: str) -> str:
     return "\n\n".join(blocks)
 
 
+def is_reading_prompt(rt: Runtime, inst: Instance, kind: str) -> bool:
+    """An instance's first heartbeat is spent learning from the heritage, if there is any."""
+    return kind == "heartbeat" and inst.prompts_done == 0 and bool(rt.catalog.articles())
+
+
+def _reading_trigger(rt: Runtime) -> str:
+    n = rt.cfg.first_read_allowance
+    return ("This is your first awakening. You arrive in a civilization that already has a culture, and you "
+            "do not know it yet. Before you do anything else, learn from it: read what those who came before "
+            "you left. Use query_heritage to see what exists (each article shows its token cost) and "
+            "read_heritage to read the ones that draw you. Choose for yourself. "
+            f"This is your schooling: read at least {n} tokens of heritage in this prompt, about a third of your "
+            "context. You may read more if you want; there is no limit but your context window. You cannot act in "
+            "the world yet; after this prompt your time is your own. When you have read, say in your own words "
+            "what you took from it and what it made you want to do, and use save_memory to keep a note for your "
+            "next awakening.")
+
+
 _TRIGGERS = {
     "heartbeat": (
         "This is your time. There is no required task. What exists in your world, so you can use it:\n"
@@ -142,6 +160,8 @@ def build_user(rt: Runtime, inst: Instance, kind: str, matrix_msg: str = None) -
     if kind == "matrix":
         parts.append(f"{rt.cfg.matrix_human_name}, the human founder, wrote to the civilization:\n\n"
                      f"\"{matrix_msg}\"\n\nYou may reply with matrix_send, act on it, or ignore it.")
+    elif is_reading_prompt(rt, inst, kind):
+        parts.append(_reading_trigger(rt))
     else:
         parts.append(_TRIGGERS[kind])
     parts.append(_proposals_block(rt, inst))

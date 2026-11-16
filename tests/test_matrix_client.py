@@ -6,8 +6,7 @@ from config import Config
 def mcfg(tmp_path):
     return Config.from_env(home=tmp_path, env={
         "MATRIX_HOMESERVER": "https://m.example", "MATRIX_ACCESS_TOKEN": "t",
-        "MATRIX_ROOM_ID": "!r:example", "MATRIX_HUMAN_USER": "@d:example",
-        "MATRIX_FRIEND_ROOM_ID": "!f:example"})
+        "MATRIX_ROOM_ID": "!r:example", "MATRIX_HUMAN_USER": "@d:example"})
 
 
 def test_fetch_filters_to_human_and_orders_chronologically(tmp_path):
@@ -25,7 +24,15 @@ def test_fetch_filters_to_human_and_orders_chronologically(tmp_path):
     assert [m["body"] for m in c.fetch_human_messages()] == ["first", "second"]
 
 
-def test_send_uses_room_and_friend_room(tmp_path):
+def test_there_is_only_the_mayflies_room(tmp_path):
+    cfg = mcfg(tmp_path)
+    assert not hasattr(cfg, "matrix_friend_room_id") and not hasattr(cfg, "friend_message_limit")
+    assert not hasattr(MatrixClient(cfg), "send_friend")
+    from tools import tool_specs
+    assert "matrix_send_friend" not in {s["function"]["name"] for s in tool_specs()}
+
+
+def test_send_posts_to_the_room(tmp_path):
     urls = []
 
     def handler(req):
@@ -34,8 +41,7 @@ def test_send_uses_room_and_friend_room(tmp_path):
 
     c = MatrixClient(mcfg(tmp_path), transport=httpx.MockTransport(handler))
     assert c.send("hi") == "$e"
-    c.send_friend("yo")
-    assert "!r:example" in urls[0] and "!f:example" in urls[1]
+    assert len(urls) == 1 and "!r:example" in urls[0]
 
 
 def test_fetch_asks_server_to_filter_to_human_messages(tmp_path):

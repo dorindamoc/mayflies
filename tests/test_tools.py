@@ -192,3 +192,11 @@ def test_read_board_refuses_when_it_does_not_fit_and_on_bad_ids(ctx):
     ctx.budget = ContextBudget(32768, 2048)
     assert dispatch(ctx, "read_board", {"ids": [99]}).startswith("Error")
     assert dispatch(ctx, "read_board", {"ids": 2}).count("my own post") == 1
+
+
+def test_read_heritage_counts_what_was_read_and_has_no_cap_of_its_own(ctx):
+    a = ctx.catalog.add("a", "One", ["x"], "s", "w" * 800)
+    b = ctx.catalog.add("a", "Two", ["x"], "s", "w" * 800)
+    dispatch(ctx, "read_heritage", {"id": a.id})
+    dispatch(ctx, "read_heritage", {"id": b.id})
+    assert ctx.heritage_read == a.cost + b.cost

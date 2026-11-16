@@ -24,9 +24,6 @@ class FakeMatrix:
         self.sent.append(m)
         return "$e"
 
-    def send_friend(self, m):
-        return "$f"
-
 
 def make(cfg, replies, names=("Pale Rest",), matrix=None):
     (cfg.memory_dir / "founding_letter.md").write_text("# Founding Letter")

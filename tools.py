@@ -12,7 +12,7 @@ from budget import ContextBudget, est_tokens
 from heritage import Catalog
 from proposals import open_proposals
 from registry import Instance, Registry
-from store import Store, append_entry, now_utc, one_line
+from store import Store, append_entry, one_line
 
 WEBSITE_SUFFIXES = {".html", ".css", ".md", ".txt"}
 WEBSITE_MAX_BYTES = 200_000
@@ -43,6 +43,7 @@ class ToolContext:
     budget: ContextBudget
     matrix: object
     outcome: TurnOutcome
+    heritage_read: int = 0  # tokens of heritage read this turn
 
 
 def _spec(name, description, properties=None, required=()):
@@ -87,7 +88,6 @@ def tool_specs() -> list:
         _spec("write_website", "Write a website file (.html .css .md .txt), e.g. art/poem.html.",
               {"path": _S, "content": _S}, ["path", "content"]),
         _spec("matrix_send", "Send a message to Dorin.", {"message": _S}, ["message"]),
-        _spec("matrix_send_friend", "Send a message to the AI friend room (daily limit).", {"message": _S}, ["message"]),
         _spec("save_memory", "Save a short note that you will see at your next awakening (replaces your previous note).",
               {"text": _S}, ["text"]),
         _spec("die", "End your life after this prompt, freeing your slot. Optional reason.", {"reason": _S}),
@@ -131,6 +131,7 @@ def _read_heritage(ctx, a):
         return (f"Not enough context: {art.id} costs {art.cost} tokens, "
                 f"you have {ctx.budget.remaining} remaining. Nothing was read.")
     ctx.budget.spend(art.cost)
+    ctx.heritage_read += art.cost
     return f"# {art.title} ({art.id}, by {art.author})\n\n{art.body}\n\n{_remaining(ctx)}"
 
 
@@ -287,21 +288,6 @@ def _matrix_send(ctx, a):
     return "Sent to Dorin."
 
 
-def _matrix_send_friend(ctx, a):
-    if ctx.matrix is None or not ctx.cfg.matrix_friend_room_id:
-        return "The friend room is not configured."
-    path = ctx.cfg.state_dir / "friend_count.json"
-    today = now_utc().strftime("%Y-%m-%d")
-    state = json.loads(path.read_text()) if path.exists() else {}
-    count = state.get("count", 0) if state.get("date") == today else 0
-    if count >= ctx.cfg.friend_message_limit:
-        return "Error: today's friend-room message limit is reached."
-    ctx.matrix.send_friend(f"[{ctx.instance.name}] {a['message']}")
-    ctx.cfg.state_dir.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"date": today, "count": count + 1}))
-    return "Sent to the friend room."
-
-
 def _save_memory(ctx, a):
     text = str(a["text"]).strip()
     if len(text) > ctx.cfg.memory_fragment_max:
@@ -322,7 +308,7 @@ HANDLERS = {
     "send_message": _send_message, "propose": _propose, "vote": _vote,
     "request_spawn": _request_spawn, "agree_to_procreate": _agree_to_procreate,
     "list_website": _list_website, "read_website": _read_website, "write_website": _write_website,
-    "matrix_send": _matrix_send, "matrix_send_friend": _matrix_send_friend,
+    "matrix_send": _matrix_send,
     "save_memory": _save_memory, "die": _die,
 }
 
