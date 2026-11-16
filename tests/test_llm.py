@@ -19,7 +19,7 @@ def test_plain_reply_and_payload(cfg):
 
     r = client(cfg, handler).chat([{"role": "user", "content": "x"}])
     assert r.content == "hi" and r.prompt_tokens == 10 and r.tool_calls == []
-    assert seen["model"] == "qwen3:14b" and seen["think"] is False
+    assert seen["model"] == "qwen3.8:27b" and seen["think"] is False
     assert seen["options"]["num_ctx"] == 32768 and seen["stream"] is False
 
 

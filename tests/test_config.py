@@ -4,7 +4,7 @@ from config import Config
 
 def test_defaults(tmp_path):
     cfg = Config.from_env(home=tmp_path, env={})
-    assert cfg.model_default == "qwen3:14b"
+    assert cfg.model_default == "qwen3.8:27b"
     assert cfg.lifespan_prompts == 7
     assert cfg.max_population == 10
     assert cfg.initial_population == 10
@@ -49,7 +49,7 @@ def test_sampling_config_defaults_and_overrides(tmp_path):
 
 def test_model_pool_weights_default_and_parsing(tmp_path):
     cfg = Config.from_env(home=tmp_path, env={})
-    assert cfg.models == ("qwen3:14b",) and cfg.model_weights == {"qwen3:14b": 1}
+    assert cfg.models == ("qwen3.8:27b",) and cfg.model_weights == {"qwen3.8:27b": 1}
     cfg = Config.from_env(home=tmp_path, env={"MODEL_POOL": "qwen3:14b=3, llama3:70b=1 ,gemma4:26b"})
     assert cfg.models == ("qwen3:14b", "llama3:70b", "gemma4:26b")
     assert cfg.model_weights == {"qwen3:14b": 3, "llama3:70b": 1, "gemma4:26b": 1}

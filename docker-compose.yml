@@ -20,7 +20,7 @@ services:
   #
   # Optional bundled Ollama for Linux/GPU hosts (Docker on macOS cannot use Metal):
   #   docker compose --profile ollama up -d
-  #   docker compose exec ollama ollama pull qwen3:14b
+  #   docker compose exec ollama ollama pull qwen3.8:27b
   ollama:
     profiles: ["ollama"]
     image: ollama/ollama

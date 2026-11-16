@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 class Config:
     home: Path
     ollama_host: str = "http://localhost:11434"
-    model_default: str = "qwen3:14b"
+    model_default: str = "qwen3.8:27b"
     model_pool: tuple = ()
     model_weights: dict = field(default_factory=dict)
     model_think: dict = field(default_factory=dict)

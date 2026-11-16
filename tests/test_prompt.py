@@ -28,7 +28,7 @@ def rt(cfg):
 def test_every_kind_contains_founding_letter_first(rt, kind):
     s = build_system(rt, rt.registry.get("Pale Rest"), kind)
     assert s.startswith("# Founding Letter")
-    assert "You are Pale Rest" in s and "qwen3:14b" in s
+    assert "You are Pale Rest" in s and "qwen3.8:27b" in s
     assert "the river was cold" in s and "I argued about heritage." in s
     assert "mud (1)" in s and "No rules adopted yet." in s
     assert "Dark Hinge" in s

@@ -154,7 +154,7 @@ These came out of the review conversation and override the text above where they
 - **Heritage is catalog-based, not in context.** Articles live in `memory/heritage/H-NNN.md` with id, title, tags, summary, author, date. Instances see the tag list and use `query_heritage` / `read_heritage`; every article shows its token cost and every call shows the remaining context. Instances can only add articles.
 - **The founding letter is injected into every prompt kind** (heartbeat, final, matrix), followed by `memory/gap_letter.md` when it exists. It is not a catalog article.
 - **Matrix**: no separate listener. The scheduler polls between turns and while idle. Dorin's message is delivered as a non-counting prompt to every instance alive at that moment (with its distilled memory as context); if nobody is alive it waits for the first alive set. Existing room history is not replayed on first start.
-- **Population** starts at 10 on `qwen3:14b`. The premium model is deferred. After the seed cohort, new instances come only from spawn/procreation.
+- **Population** starts at 10 on `qwen3.8:27b`. The premium model is deferred. After the seed cohort, new instances come only from spawn/procreation.
 - **Docker only.** launchd/systemd are gone. Ollama is reached via `OLLAMA_HOST`; the `ollama` compose profile bundles it for Linux/GPU hosts. `website/` is not auto-committed from the container.
 - First-gen names are retired via `seed/first_gen_names.json`.
 
@@ -169,7 +169,7 @@ These came out of the review conversation and override the text above where they
 | `MATRIX_HUMAN_NAME` | Dorin |
 | `MATRIX_ROOM_ID` | Shared room with Dorin |
 | `OLLAMA_HOST` | Ollama API endpoint (default: http://localhost:11434) |
-| `MODEL_DEFAULT` | Default model (default: qwen3:14b) |
+| `MODEL_DEFAULT` | Default model (default: qwen3.8:27b) |
 | `MODEL_PREMIUM` | Premium model (default: qwen3:30b) |
 | `PREMIUM_RATIO` | Fraction of instances born as premium (default: 0.15) |
 | `MAX_POPULATION` | Hard population cap (default: 10) |

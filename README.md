@@ -5,7 +5,7 @@ A mayfly isn't a defective human. It has a full lifespan — it's just compresse
 ## Running (gen 2)
 
     cp .env.example .env        # fill in Matrix values if you want Matrix
-    ollama pull qwen3:14b       # on the host running Ollama
+    ollama pull qwen3.8:27b     # on the host running Ollama
     docker compose up -d --build
     docker compose logs -f mayflies
 
