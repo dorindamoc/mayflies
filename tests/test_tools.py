@@ -200,3 +200,63 @@ def test_read_heritage_counts_what_was_read_and_has_no_cap_of_its_own(ctx):
     dispatch(ctx, "read_heritage", {"id": a.id})
     dispatch(ctx, "read_heritage", {"id": b.id})
     assert ctx.heritage_read == a.cost + b.cost
+
+
+# ---- weaker-model tolerance -------------------------------------------------
+
+def _two_articles(ctx):
+    ctx.catalog.add("a", "One", ["culture"], "first", "w" * 40)
+    ctx.catalog.add("a", "Two", ["art", "culture"], "second", "w" * 40)
+
+
+def test_query_heritage_without_tags_lists_article_ids_too(ctx):
+    _two_articles(ctx)
+    out = dispatch(ctx, "query_heritage", {})
+    assert "culture (2)" in out and "H-001 | One" in out and "H-002 | Two" in out
+    assert "context remaining" in out
+
+
+def test_query_heritage_accepts_a_string_for_tags(ctx):
+    _two_articles(ctx)
+    assert "H-002" in dispatch(ctx, "query_heritage", {"tags": "art"})
+    both = dispatch(ctx, "query_heritage", {"tags": "art, culture"})
+    assert "H-001" in both and "H-002" in both
+
+
+@pytest.mark.parametrize("raw", [1, "1", "h-1", "H-001", "H1", " H-1 ", 1.0])
+def test_read_heritage_accepts_loosely_written_ids(ctx, raw):
+    _two_articles(ctx)
+    assert "# One (H-001" in dispatch(ctx, "read_heritage", {"id": raw})
+
+
+def test_read_heritage_unknown_id_explains_the_format(ctx):
+    _two_articles(ctx)
+    out = dispatch(ctx, "read_heritage", {"id": "founding-letter"})
+    assert out.startswith("Error") and "H-001" in out and "query_heritage" in out
+
+
+@pytest.mark.parametrize("args", [
+    {"ids": [1]}, {"ids": 1}, {"ids": "1"}, {"id": "1"}, {"index": "1"}, {"post_number": 1},
+    {"post_number": {"type": "integer", "value": 1}}, {"ids": ["1"]}])
+def test_read_board_accepts_the_shapes_weaker_models_send(ctx, args):
+    ctx.store.board_post("Dark Hinge", "the first post")
+    assert "the first post" in dispatch(ctx, "read_board", args)
+
+
+def test_read_board_accepts_a_comma_separated_string(ctx):
+    ctx.store.board_post("Dark Hinge", "alpha")
+    ctx.store.board_post("Dark Hinge", "beta")
+    out = dispatch(ctx, "read_board", {"ids": "1, 2"})
+    assert "alpha" in out and "beta" in out
+
+
+def test_missing_argument_error_shows_a_working_example(ctx):
+    assert '{"ids": [1]}' in dispatch(ctx, "read_board", {})
+    assert '"id": "H-001"' in dispatch(ctx, "read_heritage", {})
+    out = dispatch(ctx, "board_post", {})
+    assert out.startswith("Error") and '"text"' in out
+
+
+def test_add_heritage_accepts_a_string_for_tags(ctx):
+    out = dispatch(ctx, "add_heritage", {"title": "T", "tags": "mud, water", "summary": "s", "body": "b"})
+    assert "mud" in out and "water" in out

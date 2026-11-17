@@ -104,29 +104,105 @@ def _website_path(cfg, rel: str) -> Path:
     return target
 
 
+def _as_list(value) -> list:
+    """A list of strings from a list, a comma-separated string, or nothing."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = re.split(r"[,;]", value)
+    elif not isinstance(value, (list, tuple)):
+        value = [value]
+    return [str(v).strip() for v in value if str(v).strip()]
+
+
+def _norm_heritage_id(raw) -> str:
+    """1, "1", "h-1", "H1" -> "H-001"; anything else is returned as given."""
+    if isinstance(raw, float) and raw.is_integer():
+        raw = int(raw)
+    s = str(raw).strip()
+    m = re.fullmatch(r"(?i)h?\s*-?\s*(\d+)", s)
+    return f"H-{int(m.group(1)):03d}" if m else s
+
+
+_BOARD_ID_KEYS = ("ids", "id", "index", "post_number", "number", "post", "n")
+
+
+def _board_numbers(a: dict) -> list:
+    raw = next((a[k] for k in _BOARD_ID_KEYS if a.get(k) not in (None, "", [])), None)
+    if raw is None:
+        raise KeyError("ids")
+    items = raw if isinstance(raw, (list, tuple)) else [raw]
+    out = []
+    for item in items:
+        if isinstance(item, dict):
+            item = item.get("value", item.get("id"))
+        out.extend(_as_list(item))
+    return out
+
+
+def _sample(schema: dict):
+    t = schema.get("type")
+    if t == "integer":
+        return 1
+    if t == "array":
+        return [_sample(schema.get("items", {}))]
+    return "..."
+
+
+_EXAMPLES = {
+    "read_heritage": {"id": "H-001"},
+    "read_board": {"ids": [1]},
+    "vote": {"proposal_id": "P-2026-01-01-001", "vote": 1},
+}
+
+
+def _example(name: str) -> str:
+    """A working example call, built from the tool's own schema unless one is written out above."""
+    spec = next((s["function"] for s in tool_specs() if s["function"]["name"] == name), None)
+    args = _EXAMPLES.get(name)
+    if args is None and spec:
+        props = spec["parameters"]["properties"]
+        args = {k: _sample(props.get(k, {})) for k in spec["parameters"]["required"]}
+    return f"{name}({json.dumps(args or {})})"
+
+
 def _remaining(ctx) -> str:
     return f"[context remaining: {ctx.budget.remaining} tokens]"
 
 
 # ---- handlers ------------------------------------------------------------
 
+HERITAGE_LIST_MAX = 60
+
+
+def _article_row(x) -> str:
+    return f"{x.id} | {x.title} | {x.cost} tokens | {x.summary} | tags: {', '.join(x.tags)}"
+
+
 def _query_heritage(ctx, a):
-    tags = a.get("tags") or []
+    tags = _as_list(a.get("tags"))
     if not tags:
         counts = ctx.catalog.tag_counts()
         lines = [f"{t} ({n})" for t, n in counts.items()] or ["(no articles yet)"]
-        return "Heritage tags: " + ", ".join(lines) + "\n" + _remaining(ctx)
+        out = "Heritage tags: " + ", ".join(lines)
+        arts = ctx.catalog.articles()
+        if arts and len(arts) <= HERITAGE_LIST_MAX:
+            out += ("\nArticles (read one with read_heritage using its id, e.g. {\"id\": \"H-001\"}):\n"
+                    + "\n".join(_article_row(x) for x in arts))
+        elif arts:
+            out += "\nMany articles exist: query_heritage with some of these tags (a list) to see their ids."
+        return out + "\n" + _remaining(ctx)
     arts = ctx.catalog.query(tags)
     if not arts:
         return "No articles match those tags.\n" + _remaining(ctx)
-    rows = [f"{x.id} | {x.title} | {x.cost} tokens | {x.summary} | tags: {', '.join(x.tags)}" for x in arts]
-    return "\n".join(rows) + "\n" + _remaining(ctx)
+    return "\n".join(_article_row(x) for x in arts) + "\n" + _remaining(ctx)
 
 
 def _read_heritage(ctx, a):
-    art = ctx.catalog.get(str(a["id"]))
+    art = ctx.catalog.get(_norm_heritage_id(a["id"]))
     if art is None:
-        return f"Error: no article {a['id']}"
+        return (f"Error: no article {a['id']!r}. Article ids look like H-001; "
+                f"list them with query_heritage (no arguments).")
     if not ctx.budget.fits(art.cost):
         return (f"Not enough context: {art.id} costs {art.cost} tokens, "
                 f"you have {ctx.budget.remaining} remaining. Nothing was read.")
@@ -136,7 +212,7 @@ def _read_heritage(ctx, a):
 
 
 def _add_heritage(ctx, a):
-    art = ctx.catalog.add(ctx.instance.name, a["title"], a["tags"], a["summary"], a["body"])
+    art = ctx.catalog.add(ctx.instance.name, a["title"], _as_list(a["tags"]), a["summary"], a["body"])
     return f"Added {art.id} with tags {', '.join(art.tags)}."
 
 
@@ -170,19 +246,18 @@ def _list_board(ctx, a):
 
 
 def _read_board(ctx, a):
-    ids = a["ids"]
-    ids = [ids] if not isinstance(ids, (list, tuple)) else list(ids)
+    ids = _board_numbers(a)
     if not ids or len(ids) > BOARD_READ_MAX:
-        return f"Error: give between 1 and {BOARD_READ_MAX} post numbers."
+        return f"Error: give between 1 and {BOARD_READ_MAX} post numbers, e.g. {_example('read_board')}."
     by_n = {p["n"]: p for p in ctx.store.board_index()}
     chosen = []
     for raw in ids:
         try:
-            post = by_n.get(int(raw))
+            post = by_n.get(int(float(raw)))
         except (TypeError, ValueError):
             post = None
         if post is None:
-            return f"Error: no board post {raw!r}."
+            return f"Error: no board post {raw!r}. Post numbers come from list_board."
         chosen.append(post)
     cost = sum(_board_cost(p) for p in chosen)
     if not ctx.budget.fits(cost):
@@ -320,7 +395,7 @@ def dispatch(ctx: ToolContext, name: str, arguments: dict) -> str:
     try:
         result = handler(ctx, arguments or {})
     except KeyError as e:
-        result = f"Error: missing argument {e}."
+        result = f"Error: missing argument {e}. A working call looks like: {_example(name)}"
     except Exception as e:  # tool failures must never crash a turn
         result = f"Error: {e}"
     ctx.outcome.actions.append(f"{name}: {one_line(json.dumps(arguments, default=str))[:120]}")
