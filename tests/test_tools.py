@@ -360,3 +360,9 @@ def test_add_heritage_keeps_an_explicit_summary_over_a_derived_one(ctx):
 def test_add_heritage_accepts_tags_written_as_a_json_string(ctx):
     dispatch(ctx, "add_heritage", {"title": "T", "tags": '["doubt", "action"]', "body": "b"})
     assert list(ctx.catalog.articles()[-1].tags) == ["doubt", "action"]
+
+
+@pytest.mark.parametrize("key", ["post", "content", "message", "body"])
+def test_board_post_accepts_common_names_for_its_text(ctx, key):
+    assert dispatch(ctx, "board_post", {key: "hello board"}) == "Posted to the board."
+    assert "hello board" in ctx.store.board_index()[-1]["text"]

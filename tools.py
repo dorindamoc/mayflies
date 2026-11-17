@@ -265,7 +265,7 @@ def _add_heritage(ctx, a):
 
 
 def _board_post(ctx, a):
-    ctx.store.board_post(ctx.instance.name, _check_len(a["text"], "post"))
+    ctx.store.board_post(ctx.instance.name, _check_len(str(_first_of(a, "text", "post", "content", "message", "body")), "post"))
     return "Posted to the board."
 
 
