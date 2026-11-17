@@ -185,3 +185,12 @@ def test_the_allowance_is_a_minimum_not_a_cap(cfg):
     tool_msgs = [m["content"] for m in rt.llm.calls[1]["messages"] if m["role"] == "tool"]
     assert len(tool_msgs) == 3 and not any("allowance" in m.lower() for m in tool_msgs)
     assert all(f"Article {i}" in tool_msgs[i] for i in range(3))
+
+
+def test_reading_prompt_tool_results_report_true_progress(cfg):
+    rt = make_rt(cfg, [LLMReply("", [ToolCall("read_heritage", {"ids": ["H-001", "H-002", "H-003"]})]),
+                       LLMReply("done"), LLMReply("n")])
+    _seed_heritage(rt)
+    run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    result = [m["content"] for m in rt.llm.calls[1]["messages"] if m["role"] == "tool"][0]
+    assert "You have read 603 of the 603 tokens" in result

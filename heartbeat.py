@@ -45,6 +45,7 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
         specs = [s for s in specs if s["function"]["name"] in READING_TOOLS]
         # the allowance is a minimum: read that much, or everything there is if that is less
         wanted = min(cfg.first_read_allowance, sum(a.cost for a in rt.catalog.articles()))
+        ctx.heritage_minimum = wanted
     sampling = sampling_options(inst.traits, cfg.temperature_min, cfg.temperature_max, cfg.presence_penalty)
     text = ""
     for round_no in range(cfg.max_tool_rounds + 1):

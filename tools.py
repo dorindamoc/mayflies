@@ -44,6 +44,7 @@ class ToolContext:
     matrix: object
     outcome: TurnOutcome
     heritage_read: int = 0  # tokens of heritage read this turn
+    heritage_minimum: Optional[int] = None  # set in the first (reading) prompt
 
 
 def _spec(name, description, properties=None, required=()):
@@ -61,8 +62,9 @@ def tool_specs() -> list:
         _spec("query_heritage", "List heritage articles carrying any of the given tags (with token cost). "
               "With no tags, list every tag and how many articles it has. Shows remaining context.",
               {"tags": _TAGS}),
-        _spec("read_heritage", "Read one heritage article in full. It costs its listed tokens from your remaining context.",
-              {"id": _S}, ["id"]),
+        _spec("read_heritage", "Read heritage articles in full, by id (like H-001). Pass several ids in one call "
+              "to read them all at once. Each costs its listed tokens from your remaining context.",
+              {"ids": _TAGS, "id": _S}),
         _spec("add_heritage", "Add a new heritage article (permanent, append-only). Give 1-6 tags and a one-line summary.",
               {"title": _S, "tags": _TAGS, "summary": _S, "body": _S}, ["title", "tags", "summary", "body"]),
         _spec("board_post", "Post to the public board all instances can read.", {"text": _S}, ["text"]),
@@ -85,8 +87,10 @@ def tool_specs() -> list:
               {"partner": _S}, ["partner"]),
         _spec("list_website", "List files in the website."),
         _spec("read_website", "Read a website file.", {"path": _S}, ["path"]),
-        _spec("write_website", "Write a website file (.html .css .md .txt), e.g. art/poem.html.",
-              {"path": _S, "content": _S}, ["path", "content"]),
+        _spec("write_website", "Write a website file (.html .css .md .txt), e.g. art/poem.html. An existing file "
+              "written by someone else is not replaced unless you set overwrite true: read it and write the "
+              "combined content to add to it.",
+              {"path": _S, "content": _S, "overwrite": {"type": "boolean"}}, ["path", "content"]),
         _spec("matrix_send", "Send a message to Dorin.", {"message": _S}, ["message"]),
         _spec("save_memory", "Save a short note that you will see at your next awakening (replaces your previous note).",
               {"text": _S}, ["text"]),
@@ -109,10 +113,24 @@ def _as_list(value) -> list:
     if value is None:
         return []
     if isinstance(value, str):
+        if value.lstrip().startswith("["):
+            try:
+                return _as_list(json.loads(value))
+            except ValueError:
+                pass
         value = re.split(r"[,;]", value)
     elif not isinstance(value, (list, tuple)):
         value = [value]
-    return [str(v).strip() for v in value if str(v).strip()]
+    return [str(int(v) if isinstance(v, float) and v.is_integer() else v).strip()
+            for v in value if str(v).strip()]
+
+
+def _first_of(a: dict, *keys):
+    """The value of the first of these argument names that is present and non-empty."""
+    for k in keys:
+        if a.get(k) not in (None, "", []):
+            return a[k]
+    raise KeyError(keys[0])
 
 
 def _norm_heritage_id(raw) -> str:
@@ -150,7 +168,7 @@ def _sample(schema: dict):
 
 
 _EXAMPLES = {
-    "read_heritage": {"id": "H-001"},
+    "read_heritage": {"ids": ["H-001", "H-002"]},
     "read_board": {"ids": [1]},
     "vote": {"proposal_id": "P-2026-01-01-001", "vote": 1},
 }
@@ -187,7 +205,7 @@ def _query_heritage(ctx, a):
         out = "Heritage tags: " + ", ".join(lines)
         arts = ctx.catalog.articles()
         if arts and len(arts) <= HERITAGE_LIST_MAX:
-            out += ("\nArticles (read one with read_heritage using its id, e.g. {\"id\": \"H-001\"}):\n"
+            out += ("\nArticles (read some with read_heritage, e.g. {\"ids\": [\"H-001\", \"H-002\"]}):\n"
                     + "\n".join(_article_row(x) for x in arts))
         elif arts:
             out += "\nMany articles exist: query_heritage with some of these tags (a list) to see their ids."
@@ -198,21 +216,51 @@ def _query_heritage(ctx, a):
     return "\n".join(_article_row(x) for x in arts) + "\n" + _remaining(ctx)
 
 
+def _heritage_ids(a: dict) -> list:
+    raw = a.get("ids")
+    if raw in (None, "", []):
+        raw = a.get("id")
+    ids = [_norm_heritage_id(x) for x in _as_list(raw)]
+    if not ids:
+        raise KeyError("ids")
+    return list(dict.fromkeys(ids))
+
+
 def _read_heritage(ctx, a):
-    art = ctx.catalog.get(_norm_heritage_id(a["id"]))
-    if art is None:
-        return (f"Error: no article {a['id']!r}. Article ids look like H-001; "
-                f"list them with query_heritage (no arguments).")
-    if not ctx.budget.fits(art.cost):
-        return (f"Not enough context: {art.id} costs {art.cost} tokens, "
+    ids = _heritage_ids(a)
+    arts = []
+    for hid in ids:
+        art = ctx.catalog.get(hid)
+        if art is None:
+            return (f"Error: no article {hid!r}. Article ids look like H-001; "
+                    f"list them with query_heritage (no arguments). Nothing was read.")
+        arts.append(art)
+    read, skipped = [], []
+    for art in arts:
+        if ctx.budget.fits(art.cost):
+            ctx.budget.spend(art.cost)
+            ctx.heritage_read += art.cost
+            read.append(art)
+        else:
+            skipped.append(art)
+    if not read:
+        a0 = skipped[0]
+        return (f"Not enough context: {a0.id} costs {a0.cost} tokens, "
                 f"you have {ctx.budget.remaining} remaining. Nothing was read.")
-    ctx.budget.spend(art.cost)
-    ctx.heritage_read += art.cost
-    return f"# {art.title} ({art.id}, by {art.author})\n\n{art.body}\n\n{_remaining(ctx)}"
+    out = "\n\n".join(f"# {x.title} ({x.id}, by {x.author})\n\n{x.body}" for x in read)
+    if skipped:
+        out += ("\n\nNot read (did not fit in your remaining context): "
+                + ", ".join(f"{x.id} ({x.cost} tokens)" for x in skipped))
+    if ctx.heritage_minimum is not None:
+        out += (f"\n\n[You have read {ctx.heritage_read} of the {ctx.heritage_minimum} tokens of heritage "
+                f"you are meant to read in this first prompt.]")
+    return out + "\n" + _remaining(ctx)
 
 
 def _add_heritage(ctx, a):
-    art = ctx.catalog.add(ctx.instance.name, a["title"], _as_list(a["tags"]), a["summary"], a["body"])
+    body = str(_first_of(a, "body", "text", "content")).strip()
+    summary = a.get("summary") or re.split(r"(?<=[.!?])\s", body, maxsplit=1)[0][:160]
+    art = ctx.catalog.add(ctx.instance.name, a["title"], _as_list(a["tags"]), summary, body)
     return f"Added {art.id} with tags {', '.join(art.tags)}."
 
 
@@ -346,13 +394,35 @@ def _read_website(ctx, a):
     return content
 
 
+def _truthy(v) -> bool:
+    return v is True or str(v).strip().lower() in ("true", "1", "yes")
+
+
+def _website_authors(ctx) -> tuple:
+    path = ctx.cfg.state_dir / "website_authors.json"
+    try:
+        return path, json.loads(path.read_text())
+    except (OSError, ValueError):
+        return path, {}
+
+
 def _write_website(ctx, a):
     content = str(a["content"])
     if len(content.encode()) > WEBSITE_MAX_BYTES:
         return "Error: file too large."
     target = _website_path(ctx.cfg, str(a["path"]))
+    key = str(target.relative_to(ctx.cfg.website_dir.resolve()))
+    path, authors = _website_authors(ctx)
+    owner = authors.get(key)
+    if target.exists() and owner != ctx.instance.name and not _truthy(a.get("overwrite")):
+        who = f", written by {owner}" if owner else ""
+        return (f"Error: {a['path']} already exists{who}. Writing would replace it. To add to it, read it "
+                f"(read_website) and write the combined content with overwrite true; or choose another path.")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content)
+    authors[key] = ctx.instance.name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(authors))
     return f"Wrote {a['path']}."
 
 
@@ -364,7 +434,7 @@ def _matrix_send(ctx, a):
 
 
 def _save_memory(ctx, a):
-    text = str(a["text"]).strip()
+    text = str(_first_of(a, "text", "note", "memory", "content", "fragment")).strip()
     if len(text) > ctx.cfg.memory_fragment_max:
         return (f"Error: memory too long ({len(text)} chars, max {ctx.cfg.memory_fragment_max}). "
                 f"Shorten it and call save_memory again.")
@@ -388,10 +458,22 @@ HANDLERS = {
 }
 
 
+def _unwrap(value):
+    """Some models send {"type": "list", "value": [...]} where a plain value belongs."""
+    if isinstance(value, dict):
+        if "value" in value and set(value) <= {"type", "value", "description"}:
+            return _unwrap(value["value"])
+        return {k: _unwrap(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_unwrap(v) for v in value]
+    return value
+
+
 def dispatch(ctx: ToolContext, name: str, arguments: dict) -> str:
     handler = HANDLERS.get(name)
     if handler is None:
         return f"Error: unknown tool {name!r}."
+    arguments = _unwrap(arguments) if isinstance(arguments, dict) else arguments
     try:
         result = handler(ctx, arguments or {})
     except KeyError as e:

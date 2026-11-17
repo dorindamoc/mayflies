@@ -252,7 +252,7 @@ def test_read_board_accepts_a_comma_separated_string(ctx):
 
 def test_missing_argument_error_shows_a_working_example(ctx):
     assert '{"ids": [1]}' in dispatch(ctx, "read_board", {})
-    assert '"id": "H-001"' in dispatch(ctx, "read_heritage", {})
+    assert '"ids": ["H-001", "H-002"]' in dispatch(ctx, "read_heritage", {})
     out = dispatch(ctx, "board_post", {})
     assert out.startswith("Error") and '"text"' in out
 
@@ -260,3 +260,103 @@ def test_missing_argument_error_shows_a_working_example(ctx):
 def test_add_heritage_accepts_a_string_for_tags(ctx):
     out = dispatch(ctx, "add_heritage", {"title": "T", "tags": "mud, water", "summary": "s", "body": "b"})
     assert "mud" in out and "water" in out
+
+
+# ---- A: several articles per call; D: no silent overwrite; E: truthful reading progress ----
+
+def test_read_heritage_reads_several_articles_in_one_call(ctx):
+    _two_articles(ctx)
+    out = dispatch(ctx, "read_heritage", {"ids": ["H-001", "2"]})
+    assert "# One (H-001" in out and "# Two (H-002" in out
+    assert ctx.heritage_read == sum(a.cost for a in ctx.catalog.articles())
+    assert "# One" in dispatch(ctx, "read_heritage", {"ids": "H-001"})
+    assert "# Two" in dispatch(ctx, "read_heritage", {"id": ["H-002"]})
+
+
+def test_type_and_value_wrappers_are_unwrapped_in_any_tool_argument(ctx):
+    _two_articles(ctx)
+    wrapped = {"ids": {"type": "list", "value": ["H-001", "H-002"]}}
+    out = dispatch(ctx, "read_heritage", wrapped)
+    assert "# One (H-001" in out and "# Two (H-002" in out
+    out = dispatch(ctx, "read_heritage", {"id": {"type": "string", "value": "H-001"}})
+    assert "# One (H-001" in out
+    out = dispatch(ctx, "save_memory", {"text": {"type": "string", "value": "kept"}})
+    assert ctx.outcome.fragment == "kept"
+
+
+def test_read_heritage_batch_reads_what_fits_and_names_what_it_skipped(ctx):
+    a = ctx.catalog.add("a", "Small", ["x"], "s", "w" * 400)
+    b = ctx.catalog.add("a", "Huge", ["x"], "s", "y" * 200000)
+    c = ctx.catalog.add("a", "Tiny", ["x"], "s", "z" * 40)
+    out = dispatch(ctx, "read_heritage", {"ids": [a.id, b.id, c.id]})
+    assert "# Small" in out and "# Tiny" in out and "# Huge" not in out
+    assert b.id in out and "not read" in out.lower()
+
+
+def test_read_heritage_batch_with_an_unknown_id_reads_nothing(ctx):
+    _two_articles(ctx)
+    out = dispatch(ctx, "read_heritage", {"ids": ["H-001", "nonsense"]})
+    assert out.startswith("Error") and "# One" not in out and ctx.heritage_read == 0
+
+
+def test_reading_progress_is_reported_by_the_tool_during_the_first_prompt(ctx):
+    _two_articles(ctx)
+    ctx.heritage_minimum = 500
+    out = dispatch(ctx, "read_heritage", {"id": "H-001"})
+    cost = ctx.catalog.get("H-001").cost
+    assert f"You have read {cost} of the 500 tokens" in out
+    ctx.heritage_minimum = None
+    assert "of the 500" not in dispatch(ctx, "read_heritage", {"id": "H-002"})
+
+
+def test_write_website_does_not_silently_overwrite_someone_elses_file(ctx):
+    other = ToolContext(cfg=ctx.cfg, instance=ctx.registry.get("Dark Hinge"), registry=ctx.registry,
+                        store=ctx.store, catalog=ctx.catalog, budget=ContextBudget(32768, 2048),
+                        matrix=None, outcome=TurnOutcome())
+    assert dispatch(other, "write_website", {"path": "art/poem.md", "content": "line 1"}).startswith("Wrote")
+    out = dispatch(ctx, "write_website", {"path": "art/poem.md", "content": "line 2"})
+    assert out.startswith("Error") and "Dark Hinge" in out and "overwrite" in out.lower()
+    assert (ctx.cfg.website_dir / "art/poem.md").read_text() == "line 1"
+    assert dispatch(ctx, "write_website", {"path": "art/poem.md", "content": "line 1\nline 2", "overwrite": True}).startswith("Wrote")
+    assert (ctx.cfg.website_dir / "art/poem.md").read_text() == "line 1\nline 2"
+
+
+def test_an_instance_may_rewrite_its_own_file_and_unknown_files_are_protected(ctx):
+    assert dispatch(ctx, "write_website", {"path": "art/mine.md", "content": "v1"}).startswith("Wrote")
+    assert dispatch(ctx, "write_website", {"path": "art/mine.md", "content": "v2"}).startswith("Wrote")
+    old = ctx.cfg.website_dir / "old.html"
+    old.write_text("seed content")
+    out = dispatch(ctx, "write_website", {"path": "old.html", "content": "new"})
+    assert out.startswith("Error") and old.read_text() == "seed content"
+    names = {s["function"]["name"]: s["function"] for s in tool_specs()}
+    assert "overwrite" in names["write_website"]["parameters"]["properties"]
+    assert "ids" in names["read_heritage"]["parameters"]["properties"]
+
+
+# ---- tolerance for argument names the models reach for ----
+
+@pytest.mark.parametrize("key", ["note", "memory", "content", "fragment"])
+def test_save_memory_accepts_common_names_for_its_text(ctx, key):
+    out = dispatch(ctx, "save_memory", {key: "remember mud"})
+    assert out.startswith("Saved") and ctx.outcome.fragment == "remember mud"
+
+
+def test_save_memory_with_nothing_usable_still_shows_a_working_call(ctx):
+    assert "save_memory(" in dispatch(ctx, "save_memory", {"colour": "blue"})
+
+
+@pytest.mark.parametrize("key", ["text", "content"])
+def test_add_heritage_accepts_text_or_content_for_the_body(ctx, key):
+    out = dispatch(ctx, "add_heritage", {"title": "T", "tags": ["a"], key: "Doubt helps. It also stalls."})
+    assert out.startswith("Added H-")
+    assert ctx.catalog.articles()[-1].summary == "Doubt helps."
+
+
+def test_add_heritage_keeps_an_explicit_summary_over_a_derived_one(ctx):
+    dispatch(ctx, "add_heritage", {"title": "T", "tags": ["a"], "summary": "mine", "body": "Other. Text."})
+    assert ctx.catalog.articles()[-1].summary == "mine"
+
+
+def test_add_heritage_accepts_tags_written_as_a_json_string(ctx):
+    dispatch(ctx, "add_heritage", {"title": "T", "tags": '["doubt", "action"]', "body": "b"})
+    assert list(ctx.catalog.articles()[-1].tags) == ["doubt", "action"]
