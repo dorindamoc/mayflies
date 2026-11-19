@@ -35,7 +35,7 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
     budget.spend(est_tokens(system) + est_tokens(user))
     outcome = TurnOutcome()
     ctx = ToolContext(cfg=cfg, instance=inst, registry=rt.registry, store=rt.store, catalog=rt.catalog,
-                      budget=budget, matrix=rt.matrix, outcome=outcome)
+                      budget=budget, matrix=rt.matrix, outcome=outcome, llm=rt.llm)
 
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     specs = tool_specs(cfg)

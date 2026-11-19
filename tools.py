@@ -10,6 +10,7 @@ from typing import Optional
 
 from budget import ContextBudget, est_tokens
 from config import Config
+from distiller import compact_note
 from heritage import Catalog
 from proposals import open_proposals
 from registry import Instance, Registry
@@ -47,6 +48,7 @@ class ToolContext:
     heritage_read: int = 0  # tokens of heritage read this turn
     heritage_minimum: Optional[int] = None  # set in the first (reading) prompt
     memory_refusals: int = 0  # over-limit save_memory attempts refused this prompt
+    llm: object = None  # for the neutral compactor of over-long notes
 
 
 def _spec(name, description, properties=None, required=()):
@@ -436,6 +438,9 @@ def _matrix_send(ctx, a):
     return "Sent to Dorin."
 
 
+MEMORY_REFUSALS = 2  # over-limit notes refused before the note is compacted
+
+
 def _shorten(text: str, limit: int) -> str:
     """Cut at the last sentence end that keeps at least half the limit, else at the last space."""
     cut = text[:limit]
@@ -451,14 +456,28 @@ def _save_memory(ctx, a):
     if len(text) <= limit:
         ctx.outcome.fragment = text
         return "Saved. You will see this at your next awakening."
-    if ctx.memory_refusals == 0:
+    if ctx.memory_refusals < MEMORY_REFUSALS:
         ctx.memory_refusals += 1
         return (f"Error: that note is {len(text)} characters and the limit is {limit}. Nothing was saved. "
                 f"Rewrite it much shorter, aim for about {int(limit * 0.8)} characters, keep only what you most "
                 f"want to remember, and call save_memory again.")
+    compacted = ""
+    try:
+        if ctx.llm is not None:
+            compacted = compact_note(ctx.llm, ctx.cfg, ctx.instance, text)
+    except Exception:  # any failure falls back to cutting the note
+        compacted = ""
+    if compacted and len(compacted) <= limit:
+        ctx.outcome.fragment = compacted
+        ctx.outcome.actions.append(f"save_memory: note compacted from {len(text)} to {len(compacted)} characters")
+        return (f"Saved, but your note was {len(text)} characters (limit {limit}), so a neutral summariser compacted "
+                f"it to {len(compacted)}. This is exactly what was saved, and what you will see at your next "
+                f"awakening:\n{compacted}")
     ctx.outcome.fragment = _shorten(text, limit)
-    return (f"Saved, but your note was {len(text)} characters, so it was shortened to {len(ctx.outcome.fragment)} "
-            f"(the limit is {limit}). You will see the shortened note at your next awakening.")
+    ctx.outcome.actions.append(f"save_memory: note cut from {len(text)} to {len(ctx.outcome.fragment)} characters")
+    return (f"Saved, but your note was {len(text)} characters (limit {limit}) and could not be compacted, so it was "
+            f"cut to {len(ctx.outcome.fragment)}. This is exactly what was saved, and what you will see at your "
+            f"next awakening:\n{ctx.outcome.fragment}")
 
 
 def _die(ctx, a):

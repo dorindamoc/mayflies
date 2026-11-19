@@ -29,3 +29,17 @@ def distill(llm, cfg: Config, inst, kind: str, final_text: str, actions: list) -
     reply = llm.chat([{"role": "system", "content": SYSTEM.format(limit=cfg.distilled_max)},
                       {"role": "user", "content": user}], tools=None, think=False, model=inst.model)
     return _truncate(reply.content, cfg.distilled_max)
+
+
+COMPACT_SYSTEM = ("You shorten a note that a short-lived mind wrote to itself, because it is over the length limit. "
+                  "Keep its first-person voice, its own words where you can, and the points it stressed. Drop "
+                  "repetition and detail first. Output only the shortened note, no preamble, at most {limit} "
+                  "characters.")
+
+
+def compact_note(llm, cfg: Config, inst, text: str) -> str:
+    """Rewrite an over-long self-chosen note to fit; raises or returns something over the limit on failure."""
+    target = int(cfg.memory_fragment_max * 0.8)
+    reply = llm.chat([{"role": "system", "content": COMPACT_SYSTEM.format(limit=target)},
+                      {"role": "user", "content": text}], tools=None, think=False, model=inst.model)
+    return reply.content.strip()

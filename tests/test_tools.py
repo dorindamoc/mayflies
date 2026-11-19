@@ -1,4 +1,5 @@
 import pytest
+from tests.fakes import FakeLLM
 from budget import ContextBudget
 from heritage import Catalog
 from registry import Registry
@@ -383,15 +384,51 @@ def test_first_over_limit_note_is_refused_with_a_concrete_target(ctx):
     assert "Nothing was saved" in out
 
 
-def test_second_over_limit_note_is_truncated_at_a_sentence_and_saved(ctx):
-    limit = ctx.cfg.memory_fragment_max
-    dispatch(ctx, "save_memory", {"text": "x" * (limit + 300)})
+def _over(ctx, n=300):
+    return {"text": "x" * (ctx.cfg.memory_fragment_max + n)}
+
+
+def _long_sentences(ctx):
     sentence = "This sentence ends here. "
-    text = sentence * (limit // len(sentence) + 5)
-    out = dispatch(ctx, "save_memory", {"text": text})
-    assert ctx.outcome.fragment is not None and len(ctx.outcome.fragment) <= limit
-    assert ctx.outcome.fragment.endswith("here.")
-    assert out.startswith("Saved") and "shortened" in out
+    return sentence * (ctx.cfg.memory_fragment_max // len(sentence) + 5)
+
+
+def test_the_first_two_over_limit_notes_are_refused_and_nothing_is_saved(ctx):
+    for _ in range(2):
+        out = dispatch(ctx, "save_memory", _over(ctx))
+        assert "Nothing was saved" in out and ctx.outcome.fragment is None
+
+
+def test_the_third_over_limit_note_is_compacted_by_a_neutral_call_and_shown_back(ctx):
+    from llm import LLMReply
+    ctx.llm = FakeLLM([LLMReply(content="I keep the river and the seam.", tool_calls=[])])
+    dispatch(ctx, "save_memory", _over(ctx)); dispatch(ctx, "save_memory", _over(ctx))
+    long = _long_sentences(ctx)
+    out = dispatch(ctx, "save_memory", {"text": long})
+    assert ctx.outcome.fragment == "I keep the river and the seam."
+    assert f"{len(long.strip())} characters" in out and "compacted" in out and "I keep the river and the seam." in out
+    call = ctx.llm.calls[0]
+    assert call["model"] == ctx.instance.model and call["tools"] is None
+    assert long.strip() in call["messages"][-1]["content"]
+    assert any("compacted" in a for a in ctx.outcome.actions)
+
+
+@pytest.mark.parametrize("reply", ["fail", "still too long", ""])
+def test_when_compaction_fails_or_does_not_fit_the_note_is_cut_at_a_sentence_and_the_reply_says_so(ctx, reply):
+    from llm import LLMError, LLMReply
+    limit = ctx.cfg.memory_fragment_max
+    ctx.llm = FakeLLM([LLMError("down") if reply == "fail" else LLMReply(content=reply or "", tool_calls=[])
+                       if reply != "still too long" else LLMReply(content="y" * (limit + 5), tool_calls=[])])
+    dispatch(ctx, "save_memory", _over(ctx)); dispatch(ctx, "save_memory", _over(ctx))
+    out = dispatch(ctx, "save_memory", {"text": _long_sentences(ctx)})
+    assert ctx.outcome.fragment.endswith("here.") and len(ctx.outcome.fragment) <= limit
+    assert out.startswith("Saved") and "cut" in out
+
+
+def test_without_an_llm_the_third_over_limit_note_is_cut(ctx):
+    dispatch(ctx, "save_memory", _over(ctx)); dispatch(ctx, "save_memory", _over(ctx))
+    out = dispatch(ctx, "save_memory", {"text": _long_sentences(ctx)})
+    assert ctx.outcome.fragment.endswith("here.") and "cut" in out
 
 
 def test_a_note_within_the_limit_is_saved_untouched_even_after_a_refusal(ctx):
