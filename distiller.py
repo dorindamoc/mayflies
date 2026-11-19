@@ -33,13 +33,26 @@ def distill(llm, cfg: Config, inst, kind: str, final_text: str, actions: list) -
 
 COMPACT_SYSTEM = ("You shorten a note that a short-lived mind wrote to itself, because it is over the length limit. "
                   "Keep its first-person voice, its own words where you can, and the points it stressed. Drop "
-                  "repetition and detail first. Output only the shortened note, no preamble, at most {limit} "
-                  "characters.")
+                  "repetition and detail first. Output only the shortened note, no preamble, at most {words} words.")
+COMPACT_TRIES = 3
+CHARS_PER_WORD = 6
 
 
 def compact_note(llm, cfg: Config, inst, text: str) -> str:
-    """Rewrite an over-long self-chosen note to fit; raises or returns something over the limit on failure."""
-    target = int(cfg.memory_fragment_max * 0.8)
-    reply = llm.chat([{"role": "system", "content": COMPACT_SYSTEM.format(limit=target)},
-                      {"role": "user", "content": text}], tools=None, think=False, model=inst.model)
-    return reply.content.strip()
+    """Rewrite an over-long self-chosen note to fit, asking again with its real length while it is still too long.
+
+    Models count words far better than characters, so the target is in words. Returns the last attempt, which
+    may still be over the limit; the caller cuts it then. Raises if the model call fails."""
+    limit = cfg.memory_fragment_max
+    words = int(limit * 0.8 / CHARS_PER_WORD)
+    messages = [{"role": "system", "content": COMPACT_SYSTEM.format(words=words)},
+                {"role": "user", "content": text}]
+    out = ""
+    for attempt in range(COMPACT_TRIES):
+        out = llm.chat(messages, tools=None, think=False, model=inst.model).content.strip()
+        if len(out) <= limit or attempt == COMPACT_TRIES - 1:
+            return out
+        messages += [{"role": "assistant", "content": out},
+                     {"role": "user", "content": f"That is {len(out)} characters and the limit is {limit}. "
+                                                 f"Shorten it to at most {words} words."}]
+    return out

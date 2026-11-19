@@ -417,8 +417,13 @@ def test_the_third_over_limit_note_is_compacted_by_a_neutral_call_and_shown_back
 def test_when_compaction_fails_or_does_not_fit_the_note_is_cut_at_a_sentence_and_the_reply_says_so(ctx, reply):
     from llm import LLMError, LLMReply
     limit = ctx.cfg.memory_fragment_max
-    ctx.llm = FakeLLM([LLMError("down") if reply == "fail" else LLMReply(content=reply or "", tool_calls=[])
-                       if reply != "still too long" else LLMReply(content="y" * (limit + 5), tool_calls=[])])
+    if reply == "fail":
+        replies = [LLMError("down")]
+    elif reply == "still too long":
+        replies = [LLMReply(content="y" * (limit + 5), tool_calls=[])] * 3  # every retry is still over
+    else:
+        replies = [LLMReply(content=reply, tool_calls=[])]
+    ctx.llm = FakeLLM(replies)
     dispatch(ctx, "save_memory", _over(ctx)); dispatch(ctx, "save_memory", _over(ctx))
     out = dispatch(ctx, "save_memory", {"text": _long_sentences(ctx)})
     assert ctx.outcome.fragment.endswith("here.") and len(ctx.outcome.fragment) <= limit
