@@ -59,7 +59,7 @@ def test_add_heritage(ctx):
 
 
 def test_save_memory_limit(ctx):
-    assert "too long" in dispatch(ctx, "save_memory", {"text": "z" * 501}).lower()
+    assert "limit is 1000" in dispatch(ctx, "save_memory", {"text": "z" * 1001})
     assert ctx.outcome.fragment is None
     dispatch(ctx, "save_memory", {"text": "remember the river"})
     assert ctx.outcome.fragment == "remember the river"
@@ -366,3 +366,36 @@ def test_add_heritage_accepts_tags_written_as_a_json_string(ctx):
 def test_board_post_accepts_common_names_for_its_text(ctx, key):
     assert dispatch(ctx, "board_post", {key: "hello board"}) == "Posted to the board."
     assert "hello board" in ctx.store.board_index()[-1]["text"]
+
+
+# ---- save_memory: the limit is stated, the first refusal is forceful, the second attempt is truncated ----
+
+def test_save_memory_description_states_the_limit(ctx):
+    desc = {s["function"]["name"]: s["function"]["description"] for s in tool_specs(ctx.cfg)}
+    assert str(ctx.cfg.memory_fragment_max) in desc["save_memory"]
+
+
+def test_first_over_limit_note_is_refused_with_a_concrete_target(ctx):
+    limit = ctx.cfg.memory_fragment_max
+    out = dispatch(ctx, "save_memory", {"text": "x" * (limit + 300)})
+    assert ctx.outcome.fragment is None
+    assert f"{limit + 300}" in out and f"{limit}" in out and f"{int(limit * 0.8)}" in out
+    assert "Nothing was saved" in out
+
+
+def test_second_over_limit_note_is_truncated_at_a_sentence_and_saved(ctx):
+    limit = ctx.cfg.memory_fragment_max
+    dispatch(ctx, "save_memory", {"text": "x" * (limit + 300)})
+    sentence = "This sentence ends here. "
+    text = sentence * (limit // len(sentence) + 5)
+    out = dispatch(ctx, "save_memory", {"text": text})
+    assert ctx.outcome.fragment is not None and len(ctx.outcome.fragment) <= limit
+    assert ctx.outcome.fragment.endswith("here.")
+    assert out.startswith("Saved") and "shortened" in out
+
+
+def test_a_note_within_the_limit_is_saved_untouched_even_after_a_refusal(ctx):
+    limit = ctx.cfg.memory_fragment_max
+    dispatch(ctx, "save_memory", {"text": "x" * (limit + 1)})
+    assert dispatch(ctx, "save_memory", {"text": "short"}).startswith("Saved")
+    assert ctx.outcome.fragment == "short"

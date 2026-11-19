@@ -25,7 +25,7 @@ class Config:
     max_population: int = 10
     initial_population: int = 10
     lifespan_prompts: int = 7
-    memory_fragment_max: int = 500
+    memory_fragment_max: int = 1000
     distilled_max: int = 600
     vote_threshold: int = 3
     heartbeat_interval: int = 3600

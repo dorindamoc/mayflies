@@ -174,7 +174,7 @@ These came out of the review conversation and override the text above where they
 | `PREMIUM_RATIO` | Fraction of instances born as premium (default: 0.15) |
 | `MAX_POPULATION` | Hard population cap (default: 10) |
 | `LIFESPAN_PROMPTS` | Prompts per lifespan (default: 7) |
-| `MEMORY_FRAGMENT_MAX` | Max characters per saved memory fragment (default: 500) |
+| `MEMORY_FRAGMENT_MAX` | Max characters per saved memory fragment (default: 1000) |
 | `VOTE_THRESHOLD` | Net votes to canonize a proposal (default: 3) |
 | `HEARTBEAT_INTERVAL` | Seconds between heartbeat rounds (default: 3600) |
 

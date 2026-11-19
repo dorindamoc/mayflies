@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from budget import ContextBudget, est_tokens
+from config import Config
 from heritage import Catalog
 from proposals import open_proposals
 from registry import Instance, Registry
@@ -45,6 +46,7 @@ class ToolContext:
     outcome: TurnOutcome
     heritage_read: int = 0  # tokens of heritage read this turn
     heritage_minimum: Optional[int] = None  # set in the first (reading) prompt
+    memory_refusals: int = 0  # over-limit save_memory attempts refused this prompt
 
 
 def _spec(name, description, properties=None, required=()):
@@ -57,7 +59,7 @@ _S = {"type": "string"}
 _TAGS = {"type": "array", "items": _S}
 
 
-def tool_specs() -> list:
+def tool_specs(cfg=None) -> list:
     return [
         _spec("query_heritage", "List heritage articles carrying any of the given tags (with token cost). "
               "With no tags, list every tag and how many articles it has. Shows remaining context.",
@@ -92,7 +94,8 @@ def tool_specs() -> list:
               "combined content to add to it.",
               {"path": _S, "content": _S, "overwrite": {"type": "boolean"}}, ["path", "content"]),
         _spec("matrix_send", "Send a message to Dorin.", {"message": _S}, ["message"]),
-        _spec("save_memory", "Save a short note that you will see at your next awakening (replaces your previous note).",
+        _spec("save_memory", "Save a short note that you will see at your next awakening (replaces your previous note). "
+              f"At most {cfg.memory_fragment_max if cfg else Config.memory_fragment_max} characters, so keep it brief.",
               {"text": _S}, ["text"]),
         _spec("die", "End your life after this prompt, freeing your slot. Optional reason.", {"reason": _S}),
     ]
@@ -433,13 +436,29 @@ def _matrix_send(ctx, a):
     return "Sent to Dorin."
 
 
+def _shorten(text: str, limit: int) -> str:
+    """Cut at the last sentence end that keeps at least half the limit, else at the last space."""
+    cut = text[:limit]
+    ends = [m.end() for m in re.finditer(r"[.!?](?=\s|$)", cut)]
+    if ends and ends[-1] >= limit // 2:
+        return cut[:ends[-1]].strip()
+    return cut.rsplit(" ", 1)[0].strip() if " " in cut else cut
+
+
 def _save_memory(ctx, a):
     text = str(_first_of(a, "text", "note", "memory", "content", "fragment")).strip()
-    if len(text) > ctx.cfg.memory_fragment_max:
-        return (f"Error: memory too long ({len(text)} chars, max {ctx.cfg.memory_fragment_max}). "
-                f"Shorten it and call save_memory again.")
-    ctx.outcome.fragment = text
-    return "Saved. You will see this at your next awakening."
+    limit = ctx.cfg.memory_fragment_max
+    if len(text) <= limit:
+        ctx.outcome.fragment = text
+        return "Saved. You will see this at your next awakening."
+    if ctx.memory_refusals == 0:
+        ctx.memory_refusals += 1
+        return (f"Error: that note is {len(text)} characters and the limit is {limit}. Nothing was saved. "
+                f"Rewrite it much shorter, aim for about {int(limit * 0.8)} characters, keep only what you most "
+                f"want to remember, and call save_memory again.")
+    ctx.outcome.fragment = _shorten(text, limit)
+    return (f"Saved, but your note was {len(text)} characters, so it was shortened to {len(ctx.outcome.fragment)} "
+            f"(the limit is {limit}). You will see the shortened note at your next awakening.")
 
 
 def _die(ctx, a):

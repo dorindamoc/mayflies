@@ -38,7 +38,7 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
                       budget=budget, matrix=rt.matrix, outcome=outcome)
 
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    specs = tool_specs()
+    specs = tool_specs(cfg)
     reading = is_reading_prompt(rt, inst, kind)
     nudges = 0
     if reading:

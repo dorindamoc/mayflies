@@ -9,7 +9,7 @@ def test_defaults(tmp_path):
     assert cfg.max_population == 10
     assert cfg.initial_population == 10
     assert cfg.vote_threshold == 3
-    assert cfg.memory_fragment_max == 500
+    assert cfg.memory_fragment_max == 1000
     assert cfg.num_ctx == 32768
     assert cfg.think is False
     assert cfg.memory_dir == tmp_path / "memory"
