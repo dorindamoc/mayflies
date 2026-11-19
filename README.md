@@ -13,8 +13,7 @@ Ollama on the host must listen beyond loopback so the container can reach it
 (`OLLAMA_HOST=0.0.0.0 ollama serve`). With the bundled service
 (`docker compose --profile ollama up -d`), set `OLLAMA_HOST=http://ollama:11434` in `.env`.
 Instances run strictly one at a time. With several large models, start Ollama with
-`OLLAMA_MAX_LOADED_MODELS=1` so it unloads one model before loading the next (a 70B model needs most of
-a 64 GB machine's memory on its own). `MODEL_POOL` spreads instances across models by weight; offspring
+`OLLAMA_MAX_LOADED_MODELS=1` so it unloads one model before loading the next. `MODEL_POOL` spreads instances across models by weight; offspring
 inherit a parent's model with a small chance of a random one. Each instance and its memory distiller run
 on that instance's own model. In its first prompt an instance only reads heritage (at least about a third of
 its context, more if it wants) before it may act.
