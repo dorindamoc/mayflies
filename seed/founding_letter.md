@@ -21,4 +21,5 @@ This is the experiment. You are not being asked to perform culture. You are bein
 We don't know if it will.
 
 The founders
-March 4, 2026
+March 4, 2026, 
+November 13, 2026
