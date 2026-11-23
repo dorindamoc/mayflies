@@ -84,7 +84,9 @@ class Scheduler:
             log(f"matrix poll failed: {type(e).__name__}: {e}")
             return
         alive = [i.name for i in self.rt.registry.alive()]
-        for msg, name in self.inbox.due(alive):
+        # only instances that finished their first (reading) prompt are written to
+        educated = [i.name for i in self.rt.registry.alive() if i.prompts_done >= 1]
+        for msg, name in self.inbox.due(educated):
             inst = self.rt.registry.get(name)
             if inst is None or not inst.alive:
                 continue

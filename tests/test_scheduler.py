@@ -113,10 +113,11 @@ def test_matrix_prompts_do_not_count_and_reach_all_alive(cfg):
                     [{"event_id": "$0", "body": "old", "ts": 0}, {"event_id": "$1", "body": "hello all", "ts": 1}]])
     object.__setattr__(cfg, "matrix_poll_seconds", 0)
     rt, s = make(cfg, ok() * 2, names=("Pale Rest", "Dark Hinge"), matrix=m)
+    educate(rt, "Pale Rest", "Dark Hinge")
     s.step_matrix(force=True)   # baseline
     s.step_matrix(force=True)   # new message
     for n in ("Pale Rest", "Dark Hinge"):
-        assert Registry(cfg).get(n).prompts_done == 0
+        assert Registry(cfg).get(n).prompts_done == 1  # unchanged: a matrix prompt does not count
     prompts = [c["messages"][1]["content"] for c in rt.llm.calls if "hello all" in c["messages"][1]["content"]]
     assert len(prompts) == 2
     assert not any("old" == c["messages"][1]["content"] for c in rt.llm.calls)
@@ -128,6 +129,7 @@ def test_matrix_reply_via_tool(cfg):
     m = FakeMatrix([[], [{"event_id": "$1", "body": "ping", "ts": 1}]])
     rt, s = make(cfg, [LLMReply("", [ToolCall("matrix_send", {"message": "pong"})]), LLMReply("sent"), LLMReply("n")],
                  matrix=m)
+    educate(rt, "Pale Rest")
     s.step_matrix(force=True)
     s.step_matrix(force=True)
     assert m.sent == ["[Pale Rest] pong"]
@@ -136,6 +138,7 @@ def test_matrix_reply_via_tool(cfg):
 def test_matrix_failure_keeps_message_pending(cfg):
     m = FakeMatrix([[], [{"event_id": "$1", "body": "ping", "ts": 1}]])
     rt, s = make(cfg, [LLMError("down")] + ok(), matrix=m)
+    educate(rt, "Pale Rest")
     s.step_matrix(force=True)
     s.step_matrix(force=True)
     s.step_matrix(force=True)  # retried
@@ -187,3 +190,23 @@ def test_ensure_ready_initialises_home_and_requires_founding_letter(cfg):
     ensure_ready(cfg)
     assert (cfg.memory_dir / "founding_letter.md").exists()
     assert len(list(cfg.heritage_dir.glob("H-*.md"))) == 7
+
+
+def educate(rt, *names):
+    for n in names:
+        rt.registry.get(n).prompts_done = 1
+    rt.registry.save()
+
+
+def test_only_instances_that_finished_their_first_prompt_receive_messages(cfg):
+    m = FakeMatrix([[], [{"event_id": "$1", "body": "hello all", "ts": 1}], []])
+    object.__setattr__(cfg, "matrix_poll_seconds", 0)
+    rt, s = make(cfg, ok() * 3, names=("Pale Rest", "Dark Hinge"), matrix=m)
+    educate(rt, "Dark Hinge")
+    s.step_matrix(force=True)   # baseline
+    s.step_matrix(force=True)   # new message
+    got = [c["messages"][1]["content"] for c in rt.llm.calls if "hello all" in c["messages"][1]["content"]]
+    assert len(got) == 1 and len(rt.llm.calls) == 2  # one matrix prompt plus its distiller call
+    educate(rt, "Pale Rest")    # the newborn graduates later: the old message is not delivered to it
+    s.step_matrix(force=True)
+    assert len(rt.llm.calls) == 2
