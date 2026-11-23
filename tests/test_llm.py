@@ -141,30 +141,13 @@ def test_model_without_thinking_support_is_retried_without_think_and_remembered(
     assert "think" in bodies[-1]
 
 
-def test_llama_style_json_calls_in_plain_text_are_parsed_even_after_chatter():
-    text = ('I will read two articles. {"name": "read_heritage", "parameters": {"id": "H-001"}} '
-            'and also {"name": "read_heritage", "arguments": {"id": "H-002"}} Please continue.')
-    content, calls = parse_text_tool_calls(text, known_names={"read_heritage"})
-    assert [(c.name, c.arguments) for c in calls] == [("read_heritage", {"id": "H-001"}),
-                                                     ("read_heritage", {"id": "H-002"})]
-    assert "{" not in content and "I will read two articles." in content
+def test_bare_json_in_plain_text_is_not_treated_as_a_tool_call(cfg):
+    text = 'Here is an example: {"name": "read_heritage", "parameters": {"id": "H-001"}}'
 
-
-def test_text_json_calls_with_unknown_tool_names_are_left_alone():
-    text = 'Here is an example: {"name": "rm_rf", "parameters": {"path": "/"}}'
-    content, calls = parse_text_tool_calls(text, known_names={"read_heritage"})
-    assert calls == [] and content == text
-
-
-def test_chat_parses_text_calls_only_for_offered_tools(cfg):
     def handler(req):
-        return httpx.Response(200, json={"message": {
-            "role": "assistant", "content": 'ok {"name": "read_heritage", "parameters": {"id": "H-001"}}'}})
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": text}})
 
     spec = {"type": "function", "function": {"name": "read_heritage", "description": "d",
                                               "parameters": {"type": "object", "properties": {}}}}
-    other = {"type": "function", "function": {"name": "die", "description": "d",
-                                               "parameters": {"type": "object", "properties": {}}}}
-    c = client(cfg, handler)
-    assert [t.name for t in c.chat([], tools=[spec]).tool_calls] == ["read_heritage"]
-    assert c.chat([], tools=[other]).tool_calls == []
+    reply = client(cfg, handler).chat([], tools=[spec])
+    assert reply.tool_calls == [] and reply.content == text

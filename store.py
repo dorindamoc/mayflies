@@ -33,6 +33,18 @@ def append_entry(path: Path, text: str) -> None:
             fcntl.flock(fh, fcntl.LOCK_UN)
 
 
+def append_line(path: Path, line: str) -> None:
+    """Append one line under an exclusive lock, so it cannot interleave with canonize or another writer."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a+") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            fh.write(line.rstrip("\n") + "\n")
+            fh.flush()
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
 def read_entries(path: Path) -> list[str]:
     if not path.exists():
         return []

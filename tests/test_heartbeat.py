@@ -95,6 +95,14 @@ def test_follow_up_failure_after_tools_still_completes_turn(cfg):
     assert r.die_reason == "x"
 
 
+def test_hitting_the_tool_round_cap_is_recorded_and_a_normal_turn_is_not_marked(cfg):
+    rt = make_rt(cfg, [LLMReply("", [ToolCall("list_website", {})]) for _ in range(20)])
+    capped = run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert any("tool round cap" in a for a in capped.actions)
+    rt = make_rt(cfg, [LLMReply("", [ToolCall("list_website", {})]), LLMReply("done"), LLMReply("n")])
+    assert not any("tool round cap" in a for a in run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat").actions)
+
+
 def test_tool_calls_in_capped_round_are_executed(cfg):
     replies = [LLMReply("", [ToolCall("list_website", {})]) for _ in range(cfg.max_tool_rounds)]
     replies.append(LLMReply("", [ToolCall("save_memory", {"text": "late"})]))

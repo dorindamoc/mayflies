@@ -14,7 +14,7 @@ from distiller import compact_note
 from heritage import Catalog
 from proposals import open_proposals
 from registry import Instance, Registry
-from store import Store, append_entry, one_line
+from store import Store, append_entry, append_line, one_line
 
 WEBSITE_SUFFIXES = {".html", ".css", ".md", ".txt"}
 WEBSITE_MAX_BYTES = 200_000
@@ -358,8 +358,7 @@ def _vote(ctx, a):
         return f"Error: you already voted on {pid}."
     comment = one_line(str(a.get("comment", ""))).replace("|", "/")
     line = f"- {pid} | {'+1' if v == 1 else '-1'} | {ctx.instance.name} | {comment}"
-    with open(ctx.store.votes_path, "a") as fh:
-        fh.write(line + "\n")
+    append_line(ctx.store.votes_path, line)
     return f"Vote recorded on {pid}."
 
 

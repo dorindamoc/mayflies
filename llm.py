@@ -34,33 +34,10 @@ _THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
 _TOOL_BLOCK = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
 
 
-_DECODER = json.JSONDecoder()
 
 
-def _json_text_calls(content: str, known_names):
-    """Llama-style calls written as plain text: {"name": ..., "parameters": {...}}, possibly after chatter."""
-    calls, spans, i = [], [], content.find("{")
-    while i != -1:
-        try:
-            obj, end = _DECODER.raw_decode(content, i)
-        except ValueError:
-            i = content.find("{", i + 1)
-            continue
-        key = "parameters" if "parameters" in obj else "arguments" if "arguments" in obj else None
-        if isinstance(obj, dict) and obj.get("name") in known_names and key:
-            calls.append(ToolCall(obj["name"], _args(obj[key])))
-            spans.append((i, end))
-            i = content.find("{", end)
-        else:
-            i = content.find("{", i + 1)
-    for start, end in reversed(spans):
-        content = content[:start] + content[end:]
-    return (" ".join(content.split()) if spans else content), calls
-
-
-def parse_text_tool_calls(content: str, known_names=None):
-    """Fallback for models that emit tool calls as plain text: <tool_call>{json}</tool_call>, and, when
-    `known_names` is given, bare JSON objects {"name": ..., "parameters"|"arguments": {...}} for those tools."""
+def parse_text_tool_calls(content: str):
+    """Fallback for models that emit tool calls as plain text: <tool_call>{json}</tool_call>."""
     calls = []
     for raw in _TOOL_BLOCK.findall(content):
         try:
@@ -69,8 +46,6 @@ def parse_text_tool_calls(content: str, known_names=None):
         except (ValueError, KeyError, TypeError):
             continue
     content = _TOOL_BLOCK.sub("", content).strip()
-    if not calls and known_names:
-        content, calls = _json_text_calls(content, known_names)
     return content, calls
 
 
@@ -138,6 +113,5 @@ class LLMClient:
             if isinstance(fn, dict) and fn.get("name"):
                 calls.append(ToolCall(fn["name"], _args(fn.get("arguments"))))
         if not calls:
-            names = {t["function"]["name"] for t in tools} if tools else None
-            content, calls = parse_text_tool_calls(content, known_names=names)
+            content, calls = parse_text_tool_calls(content)
         return LLMReply(content, calls, data.get("prompt_eval_count", 0), data.get("eval_count", 0))

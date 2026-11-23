@@ -441,3 +441,22 @@ def test_a_note_within_the_limit_is_saved_untouched_even_after_a_refusal(ctx):
     dispatch(ctx, "save_memory", {"text": "x" * (limit + 1)})
     assert dispatch(ctx, "save_memory", {"text": "short"}).startswith("Saved")
     assert ctx.outcome.fragment == "short"
+
+
+def test_a_vote_is_written_under_an_exclusive_lock_on_votes_md(ctx, monkeypatch):
+    import fcntl
+    import store
+    locked = []
+    real = fcntl.flock
+
+    def spy(fh, op):
+        locked.append((getattr(fh, "name", None), op))
+        return real(fh, op)
+
+    monkeypatch.setattr(store.fcntl, "flock", spy)
+    pid = dispatch(ctx, "propose", {"title": "T", "motivation": "m", "text": "t"}).split()[-1].strip(".")
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    locked.clear()
+    assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1}).startswith("Vote")
+    assert (str(ctx.store.votes_path), fcntl.LOCK_EX) in locked
+    assert ctx.store.votes_path.read_text().count("\n") == 1  # still one plain line per vote

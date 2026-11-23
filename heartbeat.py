@@ -70,6 +70,8 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
         for call in reply.tool_calls:
             result = dispatch(ctx, call.name, call.arguments)
             messages.append({"role": "tool", "tool_name": call.name, "content": result})
+    else:  # no break: the model was still asking for tools when the rounds ran out
+        outcome.actions.append(f"(tool round cap reached: {cfg.max_tool_rounds} rounds)")
 
     rt.store.inbox_ack(inst.name)
     try:
