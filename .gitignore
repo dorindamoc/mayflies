@@ -5,10 +5,9 @@
 state.json
 *.lock
 
-# Memory — instance-generated data, not tracked
-# heritage.md is the founding letter and IS tracked
-memory/*
-!memory/heritage.md
+# Memory & runtime state — instance-generated, not tracked (seed/ is tracked)
+memory/
+messages/
 
 # Logs
 logs/
@@ -24,3 +23,6 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# SDD workspace
+.superpowers/

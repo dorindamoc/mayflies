@@ -1,0 +1,9 @@
+.git
+.env
+memory
+messages
+tests
+docs
+__pycache__
+.claude
+.superpowers

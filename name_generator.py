@@ -2,20 +2,18 @@
 
 Names are two-word phrases: an adjective evocative of transience paired with
 a noun that feels like a moment or threshold rather than a thing. Each name
-is used at most once per full cycle through the name space.
+is used at most once per full cycle through the name space, and names used by
+the first generation are retired for good.
 
 Usage:
-    from name_generator import generate_name
-    name = generate_name()  # e.g. "Pale Reach"
+    from name_generator import generate_name, load_retired
+    name = generate_name(cfg.state_dir / "used_names.json", load_retired(cfg.seed_dir))
 """
 
 import fcntl
 import json
 import random
 from pathlib import Path
-
-BASE_DIR = Path(__file__).parent
-NAMES_FILE = BASE_DIR / "memory" / "used_names.json"
 
 # 50 × 50 = 2500 possible names — enough for decades of daily instances
 FIRST = [
@@ -39,35 +37,44 @@ SECOND = [
 ]
 
 
-def generate_name() -> str:
-    """Return a unique name, tracking used names in memory/used_names.json.
+def load_retired(seed_dir: Path) -> set:
+    """Names used by the first generation; never reissued."""
+    path = Path(seed_dir) / "first_gen_names.json"
+    if not path.exists():
+        return set()
+    return set(json.loads(path.read_text()))
 
-    If all 2500 combinations have been used, resets the pool and starts over.
-    Uses file locking to handle concurrent instantiation safely.
+
+def generate_name(names_file: Path, retired: set = None, rng=None) -> str:
+    """Return a name never used before and not in `retired`.
+
+    Used names are tracked in `names_file` (JSON list). If every combination has
+    been used, the pool of non-retired names resets.
     """
-    NAMES_FILE.parent.mkdir(exist_ok=True)
-    lock_path = NAMES_FILE.with_suffix(".lock")
+    rng = rng or random
+    retired = retired or set()
+    names_file = Path(names_file)
+    names_file.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = names_file.with_suffix(".lock")
 
     with open(lock_path, "w") as lock_fh:
         fcntl.flock(lock_fh, fcntl.LOCK_EX)
 
-        used: set[str] = set()
-        if NAMES_FILE.exists():
+        used: set = set()
+        if names_file.exists():
             try:
-                used = set(json.loads(NAMES_FILE.read_text()))
+                used = set(json.loads(names_file.read_text()))
             except (json.JSONDecodeError, ValueError):
                 used = set()
 
-        all_names = [f"{a} {b}" for a in FIRST for b in SECOND]
+        all_names = [f"{a} {b}" for a in FIRST for b in SECOND if f"{a} {b}" not in retired]
         available = [n for n in all_names if n not in used]
-
         if not available:
-            # Full cycle complete — start over
             used = set()
             available = all_names
 
-        name = random.choice(available)
+        name = rng.choice(available)
         used.add(name)
-        NAMES_FILE.write_text(json.dumps(sorted(used), indent=2))
+        names_file.write_text(json.dumps(sorted(used), indent=2))
 
     return name
