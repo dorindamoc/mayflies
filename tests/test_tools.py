@@ -460,3 +460,58 @@ def test_a_vote_is_written_under_an_exclusive_lock_on_votes_md(ctx, monkeypatch)
     assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1}).startswith("Vote")
     assert (str(ctx.store.votes_path), fcntl.LOCK_EX) in locked
     assert ctx.store.votes_path.read_text().count("\n") == 1  # still one plain line per vote
+
+
+# ---- read_matrix: Dorin's earlier messages, for instances that were not there to receive them ----
+
+class MatrixStub:
+    def __init__(self, messages=None, error=None):
+        self.messages, self.error = messages or [], error
+
+    def fetch_human_messages(self, limit=20):
+        if self.error:
+            raise self.error
+        return self.messages[-limit:]
+
+    def send(self, m):
+        return "$e"
+
+
+def _msgs(n):
+    return [{"event_id": f"${i}", "body": f"message number {i}", "ts": 1795443317226 + i * 60000}
+            for i in range(1, n + 1)]
+
+
+def test_read_matrix_is_offered_and_needs_no_arguments(ctx):
+    spec = next(s["function"] for s in tool_specs(ctx.cfg) if s["function"]["name"] == "read_matrix")
+    assert not spec["parameters"]["required"]
+
+
+def test_read_matrix_returns_the_latest_messages_oldest_first_with_utc_times(ctx):
+    ctx.matrix = MatrixStub(_msgs(15))
+    out = dispatch(ctx, "read_matrix", {"limit": 3})
+    assert out.index("message number 13") < out.index("message number 14") < out.index("message number 15")
+    assert "message number 12" not in out and "2026-11-23" in out and "UTC" in out
+
+
+def test_read_matrix_defaults_to_ten_and_caps_at_twenty(ctx):
+    ctx.matrix = MatrixStub(_msgs(30))
+    assert dispatch(ctx, "read_matrix", {}).count("message number") == 10
+    assert dispatch(ctx, "read_matrix", {"limit": 500}).count("message number") == 20
+    assert dispatch(ctx, "read_matrix", {"limit": "nonsense"}).count("message number") == 10
+
+
+def test_read_matrix_says_so_when_matrix_is_off_or_empty_or_failing(ctx):
+    assert "not configured" in dispatch(ctx, "read_matrix", {})
+    ctx.matrix = MatrixStub([])
+    assert "no messages" in dispatch(ctx, "read_matrix", {}).lower()
+    ctx.matrix = MatrixStub(error=RuntimeError("homeserver down"))
+    out = dispatch(ctx, "read_matrix", {})
+    assert out.startswith("Error") and "homeserver down" in out
+
+
+def test_read_matrix_costs_context_like_any_other_reading(ctx):
+    ctx.matrix = MatrixStub(_msgs(5))
+    before = ctx.budget.remaining
+    dispatch(ctx, "read_matrix", {})
+    assert ctx.budget.remaining < before

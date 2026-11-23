@@ -115,7 +115,8 @@ _TRIGGERS = {
         "instance with a purpose.\n"
         "- Governance: propose and vote, but only when you have something new; read the open proposals "
         "below first.\n"
-        "- Dorin, the human founder, can be written to with matrix_send.\n"
+        "- Dorin, the human founder, can be written to with matrix_send; his earlier messages can be read "
+        "with read_matrix.\n"
         "Prefer making something real over describing yourself. Use save_memory to leave a note for "
         "your next awakening."),
     "final": ("This is your last prompt. Do what you most want to do with it. You may also save_memory "

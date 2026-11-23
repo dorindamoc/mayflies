@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -96,6 +97,8 @@ def tool_specs(cfg=None) -> list:
               "combined content to add to it.",
               {"path": _S, "content": _S, "overwrite": {"type": "boolean"}}, ["path", "content"]),
         _spec("matrix_send", "Send a message to Dorin.", {"message": _S}, ["message"]),
+        _spec("read_matrix", "Read Dorin's earlier messages to the civilization, oldest first (default the latest "
+              "10, at most 20). They cost context like any other reading.", {"limit": {"type": "integer"}}),
         _spec("save_memory", "Save a short note that you will see at your next awakening (replaces your previous note). "
               f"At most {cfg.memory_fragment_max if cfg else Config.memory_fragment_max} characters, so keep it brief.",
               {"text": _S}, ["text"]),
@@ -437,6 +440,28 @@ def _matrix_send(ctx, a):
     return "Sent to Dorin."
 
 
+MATRIX_READ_DEFAULT = 10
+MATRIX_READ_MAX = 20
+
+
+def _read_matrix(ctx, a):
+    if ctx.matrix is None:
+        return "Matrix is not configured."
+    try:
+        limit = min(MATRIX_READ_MAX, max(1, int(a.get("limit") or MATRIX_READ_DEFAULT)))
+    except (TypeError, ValueError):
+        limit = MATRIX_READ_DEFAULT
+    try:
+        messages = ctx.matrix.fetch_human_messages(limit=MATRIX_READ_MAX)[-limit:]
+    except Exception as e:  # network or server trouble must not break the turn
+        return f"Error: could not read Matrix: {e}"
+    if not messages:
+        return "There are no messages from Dorin."
+    rows = [f"[{datetime.fromtimestamp(m['ts'] / 1000, tz=timezone.utc):%Y-%m-%d %H:%M} UTC] {m['body']}"
+            for m in messages]
+    return "\n\n".join(rows)
+
+
 MEMORY_REFUSALS = 2  # over-limit notes refused before the note is compacted
 
 
@@ -490,7 +515,7 @@ HANDLERS = {
     "send_message": _send_message, "propose": _propose, "vote": _vote,
     "request_spawn": _request_spawn, "agree_to_procreate": _agree_to_procreate,
     "list_website": _list_website, "read_website": _read_website, "write_website": _write_website,
-    "matrix_send": _matrix_send,
+    "matrix_send": _matrix_send, "read_matrix": _read_matrix,
     "save_memory": _save_memory, "die": _die,
 }
 
