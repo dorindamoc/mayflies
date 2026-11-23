@@ -210,3 +210,42 @@ def test_only_instances_that_finished_their_first_prompt_receive_messages(cfg):
     educate(rt, "Pale Rest")    # the newborn graduates later: the old message is not delivered to it
     s.step_matrix(force=True)
     assert len(rt.llm.calls) == 2
+
+
+def _delivered_to(rt, text):
+    return [c["messages"][1]["content"] for c in rt.llm.calls if text in c["messages"][1]["content"]]
+
+
+def _send(cfg, body, names=("Pale Rest", "Dark Hinge", "Warm Trace"), educated=None):
+    m = FakeMatrix([[], [{"event_id": "$1", "body": body, "ts": 1}]])
+    object.__setattr__(cfg, "matrix_poll_seconds", 0)
+    rt, s = make(cfg, ok() * 6, names=names, matrix=m)
+    educate(rt, *(names if educated is None else educated))
+    s.step_matrix(force=True)   # baseline
+    s.step_matrix(force=True)   # the message
+    return rt, s
+
+
+def test_a_message_naming_one_instance_goes_to_that_instance_alone(cfg):
+    rt, s = _send(cfg, "A note for dark hinge: are you well?")
+    assert len(_delivered_to(rt, "are you well?")) == 1
+    assert rt.registry.get("Dark Hinge").prompts_done == 1
+    assert len(rt.llm.calls) == 2  # one matrix prompt plus its distiller call
+
+
+def test_a_message_naming_several_instances_goes_to_each_of_them(cfg):
+    rt, s = _send(cfg, "for Pale Rest and for Warm Trace: hello")
+    assert len(_delivered_to(rt, "hello")) == 2
+
+
+def test_a_message_naming_nobody_goes_to_everyone_educated(cfg):
+    rt, s = _send(cfg, "hello everyone")
+    assert len(_delivered_to(rt, "hello everyone")) == 3
+
+
+def test_a_named_instance_that_is_not_educated_yet_is_not_written_to_and_nobody_else_is_either(cfg):
+    rt, s = _send(cfg, "for Warm Trace: welcome", educated=("Pale Rest", "Dark Hinge"))
+    assert rt.llm.calls == []
+    educate(rt, "Warm Trace")   # graduating later does not deliver it
+    s.step_matrix(force=True)
+    assert rt.llm.calls == []

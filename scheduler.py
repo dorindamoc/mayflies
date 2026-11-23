@@ -86,7 +86,7 @@ class Scheduler:
         alive = [i.name for i in self.rt.registry.alive()]
         # only instances that finished their first (reading) prompt are written to
         educated = [i.name for i in self.rt.registry.alive() if i.prompts_done >= 1]
-        for msg, name in self.inbox.due(educated):
+        for msg, name in self.inbox.due(educated, alive):
             inst = self.rt.registry.get(name)
             if inst is None or not inst.alive:
                 continue

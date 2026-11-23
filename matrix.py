@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 
@@ -43,6 +44,17 @@ class MatrixClient:
         return out
 
 
+def addressed_names(body: str, alive_names: list) -> list:
+    """Living instances a message names as "for <name>" (any case or spacing), in order of appearance."""
+    found = []
+    for name in alive_names:
+        pattern = r"(?<!\w)for\s+" + r"\s+".join(re.escape(part) for part in name.split()) + r"(?!\w)"
+        m = re.search(pattern, body, re.IGNORECASE)
+        if m:
+            found.append((m.start(), name))
+    return [name for _, name in sorted(found)]
+
+
 class MatrixInbox:
     """Tracks Dorin's messages and who has received them. State persists in a JSON file."""
 
@@ -71,15 +83,22 @@ class MatrixInbox:
         self._fresh = False
         self._save()
 
-    def due(self, alive_names: list) -> list:
+    def due(self, receiving_names: list, alive_names: list = None) -> list:
+        """Deliveries owed now. A message goes to the receiving instances, or, when it names living instances
+        with "for <name>", only to those of them that are receiving (so a named newborn is not written to)."""
+        alive_names = receiving_names if alive_names is None else alive_names
         out = []
         for p in self.pending:
             if p["targets"] is None:
-                if not alive_names:
+                named = addressed_names(p["body"], alive_names)
+                if named:
+                    p["targets"] = [n for n in named if n in receiving_names]
+                elif receiving_names:
+                    p["targets"] = list(receiving_names)
+                else:
                     continue
-                p["targets"] = list(alive_names)
             for name in p["targets"]:
-                if name not in p["delivered"] and name in alive_names:
+                if name not in p["delivered"] and name in receiving_names:
                     out.append((p, name))
         self._save()
         return out
