@@ -5,7 +5,9 @@ from config import Config
 def test_defaults(tmp_path):
     cfg = Config.from_env(home=tmp_path, env={})
     assert cfg.model_default == "qwen3.8:27b"
-    assert cfg.lifespan_prompts == 7
+    assert cfg.short_term_max == 500 and cfg.long_term_fraction == 0.5 and cfg.long_term_entry_max == 300
+    assert cfg.long_term_tokens == 16384
+    assert not hasattr(cfg, "lifespan_prompts")
     assert cfg.max_population == 10
     assert cfg.initial_population == 10
     assert cfg.vote_threshold == 3
@@ -22,16 +24,16 @@ def test_defaults(tmp_path):
 
 def test_env_overrides(tmp_path):
     cfg = Config.from_env(home=tmp_path, env={
-        "LIFESPAN_PROMPTS": "9", "THINK": "true", "MAX_POPULATION": "12",
+        "LONG_TERM_FRACTION": "0.25", "SHORT_TERM_MAX": "400", "THINK": "true", "MAX_POPULATION": "12",
         "MATRIX_HOMESERVER": "https://m.example", "MATRIX_ACCESS_TOKEN": "t",
         "MATRIX_ROOM_ID": "!r:example", "MATRIX_HUMAN_USER": "@d:example",
     })
-    assert cfg.lifespan_prompts == 9 and cfg.think is True and cfg.max_population == 12
+    assert cfg.long_term_fraction == 0.25 and cfg.short_term_max == 400 and cfg.long_term_tokens == 8192 and cfg.think is True and cfg.max_population == 12
     assert cfg.matrix_enabled
 
 
 @pytest.mark.parametrize("env", [
-    {"LIFESPAN_PROMPTS": "4"}, {"LIFESPAN_PROMPTS": "11"},
+    {"LONG_TERM_FRACTION": "0"}, {"LONG_TERM_FRACTION": "0.9"},
     {"MAX_POPULATION": "21"}, {"MAX_POPULATION": "0"},
     {"INITIAL_POPULATION": "11", "MAX_POPULATION": "10"},
 ])

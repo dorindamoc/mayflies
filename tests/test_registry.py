@@ -11,7 +11,6 @@ def test_add_save_reload_and_order(cfg):
     r.save()
     r2 = Registry(cfg)
     assert [i.name for i in r2.alive()] == ["Pale Rest", "Dark Hinge"]
-    assert r2.get("Pale Rest").lifespan == cfg.lifespan_prompts
 
 
 def test_kill_frees_slot_but_keeps_record(cfg):
@@ -40,7 +39,7 @@ def test_world_state_mentions_population_and_positions(cfg):
     r.add(a)
     r.add(r.new_instance("Dark Hinge", T))
     text = r.world_state()
-    assert "2 of 10" in text and "Pale Rest (prompt 3 of 7)" in text and "Dark Hinge (prompt 1 of 7)" in text
+    assert "2 of 10" in text and "Pale Rest (prompt 3)" in text and "Dark Hinge (prompt 1)" in text
 
 
 import random
@@ -65,3 +64,12 @@ def test_offspring_inherit_a_parents_model_unless_mutating(cfg):
     b = r.new_instance("Bb", T, model="m-b")
     assert {r.pick_model([a, b], random.Random(s), mutation_rate=0.0) for s in range(40)} == {"m-a", "m-b"}
     assert {r.pick_model([a, b], random.Random(s), mutation_rate=1.0) for s in range(300)} == {"m-a", "m-b", "m-c", "big"}
+
+
+def test_records_from_before_the_memory_files_still_load(cfg):
+    import json
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    (cfg.state_dir / "instances.json").write_text(json.dumps([{
+        "name": "Pale Rest", "model": "qwen3.8:27b", "traits": T, "lifespan": 7, "parents": [],
+        "prompts_done": 2, "fragment": "old", "distilled": "older", "alive": True, "died": "", "born_at": ""}]))
+    assert Registry(cfg).get("Pale Rest").prompts_done == 2

@@ -25,9 +25,10 @@ class Config:
     max_tool_rounds: int = 6
     max_population: int = 10
     initial_population: int = 10
-    lifespan_prompts: int = 7
     memory_fragment_max: int = 1000
-    distilled_max: int = 600
+    short_term_max: int = 500
+    long_term_fraction: float = 0.5
+    long_term_entry_max: int = 300
     vote_threshold: int = 3
     heartbeat_interval: int = 3600
     board_recent: int = 20
@@ -43,8 +44,8 @@ class Config:
     matrix_room_id: str = ""
 
     def __post_init__(self):
-        if not 5 <= self.lifespan_prompts <= 10:
-            raise ValueError("LIFESPAN_PROMPTS must be between 5 and 10")
+        if not 0 < self.long_term_fraction <= 0.8:
+            raise ValueError("LONG_TERM_FRACTION must be above 0 and at most 0.8")
         if not 1 <= self.max_population <= 20:
             raise ValueError("MAX_POPULATION must be between 1 and 20")
         if not 0 <= self.initial_population <= self.max_population:
@@ -66,6 +67,15 @@ class Config:
     @property
     def memory_dir(self) -> Path:
         return self.home / "memory"
+
+    @property
+    def long_term_tokens(self) -> int:
+        """The long-term memory an instance can hold; when it is full the instance has one last prompt."""
+        return int(self.num_ctx * self.long_term_fraction)
+
+    @property
+    def memories_dir(self) -> Path:
+        return self.memory_dir / "memories"
 
     @property
     def messages_dir(self) -> Path:
@@ -133,9 +143,10 @@ class Config:
             max_tool_rounds=i("MAX_TOOL_ROUNDS", cls.max_tool_rounds),
             max_population=i("MAX_POPULATION", cls.max_population),
             initial_population=i("INITIAL_POPULATION", cls.initial_population),
-            lifespan_prompts=i("LIFESPAN_PROMPTS", cls.lifespan_prompts),
             memory_fragment_max=i("MEMORY_FRAGMENT_MAX", cls.memory_fragment_max),
-            distilled_max=i("DISTILLED_MAX", cls.distilled_max),
+            short_term_max=i("SHORT_TERM_MAX", cls.short_term_max),
+            long_term_fraction=float(env.get("LONG_TERM_FRACTION", cls.long_term_fraction)),
+            long_term_entry_max=i("LONG_TERM_ENTRY_MAX", cls.long_term_entry_max),
             vote_threshold=i("VOTE_THRESHOLD", cls.vote_threshold),
             heartbeat_interval=i("HEARTBEAT_INTERVAL", cls.heartbeat_interval),
             board_recent=i("BOARD_RECENT", cls.board_recent),

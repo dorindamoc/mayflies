@@ -99,7 +99,8 @@ def tool_specs(cfg=None) -> list:
         _spec("matrix_send", "Send a message to Dorin.", {"message": _S}, ["message"]),
         _spec("read_matrix", "Read Dorin's earlier messages to the civilization, oldest first (default the latest "
               "10, at most 20). They cost context like any other reading.", {"limit": {"type": "integer"}}),
-        _spec("save_memory", "Save a short note that you will see at your next awakening (replaces your previous note). "
+        _spec("save_memory", "Save a short note to remember. You will see it at your next awakening in your short-term memory, "
+              "and after that it is compacted into your long-term memory. "
               f"At most {cfg.memory_fragment_max if cfg else Config.memory_fragment_max} characters, so keep it brief.",
               {"text": _S}, ["text"]),
         _spec("die", "End your life after this prompt, freeing your slot. Optional reason.", {"reason": _S}),

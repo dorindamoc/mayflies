@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from births import process_requests
 from canonize import canonize
 from config import Config
+from distiller import fold
 from heartbeat import run_prompt
 from matrix import MatrixInbox
 from name_generator import generate_name, load_retired
@@ -45,24 +46,30 @@ class Scheduler:
     # --- applying results ---
     def _apply(self, inst, result, counted: bool, final: bool = False) -> None:
         reg = self.rt.registry
-        inst.distilled = result.distilled or inst.distilled
-        if result.fragment is not None:
-            inst.fragment = result.fragment
+        self._remember(inst, result)
         if counted:
             inst.prompts_done += 1
         if counted and final:
-            reg.kill(inst.name, "lifespan")
-            log(f"{inst.name} ended (lifespan)")
+            reg.kill(inst.name, "memory full")
+            log(f"{inst.name} ended (memory full)")
         elif result.die_reason:
             reg.kill(inst.name, f"chosen: {result.die_reason}")
             log(f"{inst.name} chose to end: {result.die_reason}")
         reg.save()
 
+    def _remember(self, inst, result) -> None:
+        """The last prompt's short-term memory is compacted into long-term; this prompt becomes the short-term."""
+        mem = self.rt.memories
+        before = mem.short_text(inst.name)
+        if before:
+            mem.append_long(inst.name, fold(self.rt.llm, self.cfg, inst, before))
+        mem.set_short(inst.name, result.recap, result.fragment or "")
+
     def run_counted(self, name: str) -> None:
         inst = self.rt.registry.get(name)
-        final = inst.prompts_done + 1 >= inst.lifespan
+        final = self.rt.memories.is_full(name)
         kind = "final" if final else "heartbeat"
-        log(f"{name}: {kind} prompt {inst.prompts_done + 1}/{inst.lifespan}")
+        log(f"{name}: {kind} prompt {inst.prompts_done + 1} (long-term memory {int(self.rt.memories.fill(name) * 100)}%)")
         try:
             result = run_prompt(self.rt, inst, kind)
         except Exception as e:  # LLM outage or anything unexpected: not counted, nobody dies

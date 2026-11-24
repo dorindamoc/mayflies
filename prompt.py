@@ -40,22 +40,31 @@ def _identity(rt: Runtime, inst: Instance) -> str:
     return "\n".join(lines)
 
 
-def _lifespan(inst: Instance, kind: str) -> str:
-    n, m = inst.prompts_done + 1, inst.lifespan
+def _lifespan(rt: Runtime, inst: Instance, kind: str) -> str:
+    n = inst.prompts_done + 1
     if kind == "matrix":
-        return (f"You are at prompt {n} of {m} of your life. This prompt is a message from Dorin and "
-                f"does not count against your lifespan.")
+        return f"You are at prompt {n} of your life. This prompt is a message from Dorin."
     if kind == "final":
-        return (f"This is your final prompt (prompt {n} of {m}). After it you end. "
+        return (f"This is your final prompt (prompt {n} of your life): your long-term memory is full. After it you end. "
                 f"Leave whatever you want to leave: heritage, the website, messages, the board.")
-    return f"You are at prompt {n} of {m} of your life."
+    pct = int(rt.memories.fill(inst.name) * 100)
+    return (f"You are at prompt {n} of your life. Your long-term memory is {pct}% full. You live until it is full: "
+            f"you then get one last prompt and end.")
 
 
-def _memory(inst: Instance) -> str:
-    parts = ["Your memory from before (you carry these across prompts; you are the same individual):"]
-    parts.append(f"- Your own note: {inst.fragment}" if inst.fragment else "- Your own note: (none)")
-    parts.append(f"- Distilled recollection: {inst.distilled}" if inst.distilled
-                 else "- Distilled recollection: (this is your first awakening)")
+def _memory(rt: Runtime, inst: Instance) -> str:
+    long = rt.memories.long(inst.name)
+    recap, note = rt.memories.short(inst.name)
+    parts = ["Your memories (you carry these across prompts; you are the same individual):",
+             "Long-term memories (compacted entries from your earlier prompts, oldest first):",
+             long or "(none yet)",
+             "Short-term memories (your last prompt):"]
+    if not recap and not note:
+        parts.append("(this is your first awakening)")
+    if recap:
+        parts.append(recap)
+    if note:
+        parts.append(f"I wanted to remember: {note}")
     return "\n".join(parts)
 
 
@@ -73,8 +82,8 @@ def build_system(rt: Runtime, inst: Instance, kind: str) -> str:
     rules = _read(rt.store.rules_path) or "No rules adopted yet."
     blocks = letters + [
         _identity(rt, inst),
-        _lifespan(inst, kind),
-        _memory(inst),
+        _lifespan(rt, inst, kind),
+        _memory(rt, inst),
         "World state:\n" + rt.registry.world_state(),
         _heritage(rt),
         f"Your context window is {rt.cfg.num_ctx} tokens in total.",

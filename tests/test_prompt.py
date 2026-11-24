@@ -13,9 +13,10 @@ def rt(cfg):
     (cfg.memory_dir / "founding_letter.md").write_text("# Founding Letter\nYou are complete.")
     reg = Registry(cfg)
     me = reg.new_instance("Pale Rest", T)
-    me.fragment = "the river was cold"
-    me.distilled = "I argued about heritage."
     reg.add(me)
+    from memories import Memories
+    Memories(cfg).set_short("Pale Rest", "I argued about heritage.", "the river was cold")
+    Memories(cfg).append_long("Pale Rest", "Day one I read the founders.")
     reg.add(reg.new_instance("Dark Hinge", T))
     from heritage import Catalog
     from store import Store
@@ -43,9 +44,21 @@ def test_gap_letter_follows_founding_letter(rt):
 def test_lifespan_wording_per_kind(rt):
     me = rt.registry.get("Pale Rest")
     me.prompts_done = 2
-    assert "prompt 3 of 7" in build_system(rt, me, "heartbeat").lower()
-    assert "final prompt" in build_system(rt, me, "final").lower()
-    assert "does not count" in build_system(rt, me, "matrix").lower()
+    assert "prompt 3 of your life" in build_system(rt, me, "heartbeat").lower()
+    assert "long-term memory is" in build_system(rt, me, "heartbeat").lower()
+    assert "final prompt" in build_system(rt, me, "final").lower() and "memory is full" in build_system(rt, me, "final").lower()
+    assert "message from dorin" in build_system(rt, me, "matrix").lower()
+
+
+def test_memories_are_shown_in_two_labelled_parts(rt):
+    s = build_system(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert s.index("Long-term memories") < s.index("Day one I read the founders.") < s.index("Short-term memories")
+    assert s.index("Short-term memories") < s.index("I argued about heritage.") < s.index("I wanted to remember: the river was cold")
+
+
+def test_no_memories_yet_says_so(rt):
+    s = build_system(rt, rt.registry.get("Dark Hinge"), "heartbeat")
+    assert "first awakening" in s
 
 
 def test_rules_included_when_present(rt):

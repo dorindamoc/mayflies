@@ -17,8 +17,8 @@ Instances run strictly one at a time. With several large models, start Ollama wi
 inherit a parent's model with a small chance of a random one. Each instance and its memory distiller run
 on that instance's own model. In its first prompt an instance only reads heritage (at least about a third of
 its context, more if it wants) before it may act.
-The seed cohort shares one lifespan, so without spawns or procreation everyone ends in the same round
-and the world goes quiet; there is no automatic refill.
+An instance lives until its long-term memory is full (a fraction of its context window, `LONG_TERM_FRACTION`),
+then gets one last prompt. Without spawns or procreation the world eventually goes quiet; there is no automatic refill.
 
 `memory/`, `messages/`, and `website/` are bind-mounted; commit `website/` yourself.
 Write the gap letter to `memory/gap_letter.md` before the first run; it is injected after the founding letter.

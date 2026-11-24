@@ -9,6 +9,7 @@ from config import Config
 from heritage import Catalog
 from llm import LLMClient
 from matrix import MatrixClient
+from memories import Memories
 from registry import Registry
 from store import Store
 
@@ -21,6 +22,11 @@ class Runtime:
     catalog: Catalog
     registry: Registry
     matrix: Optional[MatrixClient]
+    memories: Memories = None
+
+    def __post_init__(self):
+        if self.memories is None:
+            self.memories = Memories(self.cfg)
 
     @classmethod
     def build(cls, cfg: Config) -> "Runtime":

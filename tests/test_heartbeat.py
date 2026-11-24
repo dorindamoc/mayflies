@@ -25,7 +25,7 @@ def test_plain_turn_distills_and_acks_inbox(cfg):
     rt.store.inbox_append("Pale Rest", "Dark Hinge", "psst")
     inst = rt.registry.get("Pale Rest")
     r = run_prompt(rt, inst, "heartbeat")
-    assert r.text == "I thought about rivers." and r.distilled == "Thought about rivers."
+    assert r.text == "I thought about rivers." and r.recap == "Thought about rivers."
     assert r.fragment is None and r.die_reason is None
     assert rt.store.inbox_peek("Pale Rest") == []
     assert inst.prompts_done == 0  # the scheduler owns mutation
@@ -60,11 +60,10 @@ def test_die_is_reported(cfg):
     assert r.die_reason == "enough"
 
 
-def test_distiller_failure_keeps_previous_distilled(cfg):
-    rt = make_rt(cfg, [LLMReply("text"), LLMError("down")])
-    inst = rt.registry.get("Pale Rest")
-    inst.distilled = "old memory"
-    assert run_prompt(rt, inst, "heartbeat").distilled == "old memory"
+def test_distiller_failure_falls_back_to_what_the_instance_did(cfg):
+    rt = make_rt(cfg, [LLMReply("", [ToolCall("board_post", {"text": "hi"})]), LLMReply("posted"), LLMError("down")])
+    r = run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "board_post" in r.recap and len(r.recap) <= cfg.short_term_max
 
 
 def test_main_model_failure_propagates_and_inbox_not_acked(cfg):
@@ -75,10 +74,10 @@ def test_main_model_failure_propagates_and_inbox_not_acked(cfg):
     assert len(rt.store.inbox_peek("Pale Rest")) == 1
 
 
-def test_distilled_truncated_at_word_boundary(cfg):
+def test_recap_truncated_at_word_boundary(cfg):
     rt = make_rt(cfg, [LLMReply("x"), LLMReply("word " * 400)])
     r = run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
-    assert len(r.distilled) <= cfg.distilled_max and not r.distilled.endswith("wor")
+    assert len(r.recap) <= cfg.short_term_max and not r.recap.endswith("wor")
 
 
 def test_matrix_kind_includes_message_and_uses_budget(cfg):

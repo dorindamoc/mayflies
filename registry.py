@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import random
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
 
 from config import Config
@@ -16,11 +16,8 @@ class Instance:
     name: str
     model: str
     traits: dict
-    lifespan: int
     parents: list = field(default_factory=list)
     prompts_done: int = 0
-    fragment: str = ""
-    distilled: str = ""
     alive: bool = True
     died: str = ""
     born_at: str = ""
@@ -32,8 +29,9 @@ class Registry:
         self.path = cfg.state_dir / "instances.json"
         self._items: dict = {}
         if self.path.exists():
+            known = {f.name for f in fields(Instance)}
             for d in json.loads(self.path.read_text()):
-                self._items[d["name"]] = Instance(**d)
+                self._items[d["name"]] = Instance(**{k: v for k, v in d.items() if k in known})
 
     def pick_model(self, parents=(), rng=None, mutation_rate: float = 0.15) -> str:
         """Offspring inherit a parent's model (small chance of a weighted-random one); everyone else gets
@@ -57,7 +55,7 @@ class Registry:
         if model is None:
             model = self.pick_model([self.get(p) if isinstance(p, str) else p for p in parents])
         return Instance(name=name, model=model, traits=dict(traits),
-                        lifespan=self.cfg.lifespan_prompts, parents=list(parents), born_at=stamp())
+                        parents=list(parents), born_at=stamp())
 
     def add(self, inst: Instance) -> None:
         self._items[inst.name] = inst
@@ -84,12 +82,12 @@ class Registry:
             t = ", ".join(f"{k} {v}" for k, v in i.traits.items())
             parents = " + ".join(i.parents) if i.parents else "none"
             lines += [f"## {i.name}", f"- model: {i.model}", f"- traits: {t}",
-                      f"- born: {i.born_at}", f"- prompt: {i.prompts_done + 1} of {i.lifespan}",
+                      f"- born: {i.born_at}", f"- prompt: {i.prompts_done + 1}",
                       f"- parents: {parents}", ""]
         return "\n".join(lines)
 
     def world_state(self) -> str:
         alive = self.alive()
-        rows = [f"{i.name} (prompt {i.prompts_done + 1} of {i.lifespan})" for i in alive]
+        rows = [f"{i.name} (prompt {i.prompts_done + 1})" for i in alive]
         return (f"Population: {len(alive)} of {self.cfg.max_population} slots.\n"
                 f"Alive: {', '.join(rows) if rows else 'no one'}.")

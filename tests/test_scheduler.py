@@ -1,6 +1,7 @@
 import httpx
 import pytest
 from heritage import Catalog
+from memories import Memories
 from llm import LLMError, LLMReply, ToolCall
 from matrix import MatrixInbox
 from registry import Registry
@@ -52,29 +53,57 @@ def test_seed_population_only_when_empty(cfg):
     assert len(rt.registry.alive()) == 10
 
 
-def test_counted_prompt_updates_memory_and_counter(cfg):
+def test_counted_prompt_writes_short_term_with_recap_and_note(cfg):
     rt, s = make(cfg, [LLMReply("", [ToolCall("save_memory", {"text": "keep this"})]),
                        LLMReply("done"), LLMReply("distilled note")])
     s.run_counted("Pale Rest")
-    i = Registry(cfg).get("Pale Rest")
-    assert i.prompts_done == 1 and i.fragment == "keep this" and i.distilled == "distilled note"
+    assert Registry(cfg).get("Pale Rest").prompts_done == 1
+    assert Memories(cfg).short("Pale Rest") == ("distilled note", "keep this")
+    assert Memories(cfg).long("Pale Rest") == ""  # nothing earlier to fold yet
 
 
-def test_fragment_kept_when_not_saved_again(cfg):
-    rt, s = make(cfg, ok() + ok())
-    rt.registry.get("Pale Rest").fragment = "old note"
+def test_next_prompt_folds_the_old_short_term_into_long_term(cfg):
+    rt, s = make(cfg, [LLMReply("", [ToolCall("save_memory", {"text": "keep this"})]), LLMReply("done"),
+                       LLMReply("first recap")] + ok("second", "second recap") + [LLMReply("entry one")])
     s.run_counted("Pale Rest")
-    assert Registry(cfg).get("Pale Rest").fragment == "old note"
+    s.run_counted("Pale Rest")
+    mem = Memories(cfg)
+    assert mem.long("Pale Rest") == "- entry one"
+    assert mem.short("Pale Rest") == ("second recap", "")  # the note was folded; none saved this time
+    fold_call = rt.llm.calls[-1]["messages"][1]["content"]
+    assert "first recap" in fold_call and "I wanted to remember: keep this" in fold_call
 
 
-def test_final_prompt_kills_after_lifespan_and_announces(cfg):
+def test_matrix_prompts_feed_memory_too(cfg):
+    rt, s = make(cfg, ok() + ok("replied", "matrix recap") + [LLMReply("entry")],
+                 matrix=FakeMatrix([[], [{"event_id": "$1", "sender": "@d:x", "body": "hello", "ts": 1}]]))
+    s.run_counted("Pale Rest")
+    s.step_matrix(force=True)
+    s.step_matrix(force=True)
+    assert Memories(cfg).short("Pale Rest")[0] == "matrix recap" and Memories(cfg).long("Pale Rest") == "- entry"
+
+
+def test_full_long_term_memory_announces_a_last_prompt_and_ends_the_life(cfg):
     rt, s = make(cfg, ok())
-    me = rt.registry.get("Pale Rest")
-    me.prompts_done = cfg.lifespan_prompts - 1
+    Memories(cfg).append_long("Pale Rest", "x" * (cfg.long_term_tokens * 4))
     s.run_counted("Pale Rest")
-    assert "final prompt" in rt.llm.calls[0]["messages"][0]["content"].lower()
+    system = rt.llm.calls[0]["messages"][0]["content"].lower()
+    assert "final prompt" in system and "memory is full" in system
     dead = Registry(cfg).get("Pale Rest")
-    assert dead.alive is False and dead.died == "lifespan"
+    assert dead.alive is False and dead.died == "memory full"
+
+
+def test_memory_filling_up_on_a_prompt_makes_the_next_one_the_last(cfg):
+    fold_that_fills = [LLMReply("e" * 200)]
+    rt, s = make(cfg, ok("a", "recap") + ok("b", "recap2") + fold_that_fills + ok("c", "recap3"))
+    Memories(cfg).append_long("Pale Rest", "x" * (cfg.long_term_tokens * 4 - 40))
+    s.run_counted("Pale Rest")
+    assert Registry(cfg).get("Pale Rest").alive  # nothing was folded yet
+    s.run_counted("Pale Rest")
+    assert Registry(cfg).get("Pale Rest").alive  # this prompt's fold filled the memory
+    s.run_counted("Pale Rest")
+    assert "final prompt" in rt.llm.calls[-3]["messages"][0]["content"].lower()
+    assert Registry(cfg).get("Pale Rest").died == "memory full"
 
 
 def test_chosen_death(cfg):

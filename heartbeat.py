@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from budget import ContextBudget, est_tokens
-from distiller import distill
+from distiller import _truncate, distill
 from llm import LLMError
 from prompt import build_system, build_user, is_reading_prompt
 from runtime import Runtime
@@ -24,7 +24,7 @@ class TurnResult:
     actions: list
     fragment: Optional[str]
     die_reason: Optional[str]
-    distilled: str
+    recap: str
 
 
 def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResult:
@@ -75,7 +75,8 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
 
     rt.store.inbox_ack(inst.name)
     try:
-        distilled = distill(rt.llm, cfg, inst, kind, text, outcome.actions) or inst.distilled
+        recap = distill(rt.llm, cfg, inst, kind, text, outcome.actions)
     except LLMError:
-        distilled = inst.distilled
-    return TurnResult(text, outcome.actions, outcome.fragment, outcome.die_reason, distilled)
+        recap = ""
+    recap = recap or _truncate("; ".join(outcome.actions), cfg.short_term_max)  # at least what it did
+    return TurnResult(text, outcome.actions, outcome.fragment, outcome.die_reason, recap)
