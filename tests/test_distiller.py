@@ -56,7 +56,7 @@ def test_distill_asks_for_what_was_made_read_and_learned(cfg):
 def test_fold_compacts_short_term_into_a_long_term_entry(cfg):
     llm = FakeLLM([reply("compact entry")])
     assert fold(llm, cfg, inst(cfg), "I read.\n\nI wanted to remember: x") == "compact entry"
-    assert str(cfg.long_term_entry_max) in llm.calls[0]["messages"][0]["content"]
+    assert "words" in llm.calls[0]["messages"][0]["content"]
     assert "I wanted to remember: x" in llm.calls[0]["messages"][1]["content"]
 
 
@@ -66,3 +66,17 @@ def test_fold_cuts_an_over_long_entry_and_survives_a_model_failure(cfg):
     from llm import LLMError
     assert fold(FakeLLM([LLMError("down")]), cfg, inst(cfg), "short term text") == "short term text"
     assert len(fold(FakeLLM([LLMError("down")]), cfg, inst(cfg), "w " * 400)) <= cfg.long_term_entry_max
+
+
+def test_fold_asks_in_words_and_asks_again_when_the_entry_is_too_long(cfg):
+    long = "I built a thing and it was good. " * 20
+    llm = FakeLLM([reply(long), reply("I built a thing.")])
+    assert fold(llm, cfg, inst(cfg), "short term text") == "I built a thing."
+    assert "words" in llm.calls[0]["messages"][0]["content"]
+    assert str(len(long.strip())) in llm.calls[1]["messages"][-1]["content"]
+
+
+def test_fold_last_resort_cut_ends_at_a_sentence(cfg):
+    sentence = "I built the lattice and left it open for the others. "
+    out = fold(FakeLLM([reply(sentence * 20)] * 3), cfg, inst(cfg), "short term text")
+    assert len(out) <= cfg.long_term_entry_max and out.endswith(".")

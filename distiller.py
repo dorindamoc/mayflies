@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from config import Config
 from llm import LLMError
 
@@ -18,6 +20,9 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     cut = text[:limit]
+    ends = [m.end() for m in re.finditer(r"[.!?](?=\s|$)", cut)]
+    if ends and ends[-1] >= limit // 2:  # prefer ending on a sentence over ending mid-thought
+        return cut[:ends[-1]].strip()
     return cut.rsplit(" ", 1)[0] if " " in cut else cut
 
 
@@ -35,19 +40,33 @@ def distill(llm, cfg: Config, inst, kind: str, final_text: str, actions: list) -
 FOLD_SYSTEM = ("You compress the memory of a short-lived mind for its long-term memory. You are given what it "
                "remembered of one earlier prompt, including a note it chose to keep. Write one very compact "
                "first-person entry that keeps only what will still matter much later. "
-               "Output only the entry, no preamble, at most {limit} characters.")
+               "Output only the entry, no preamble, at most {words} words.")
+
+
+FOLD_TRIES = 3
 
 
 def fold(llm, cfg: Config, inst, short_text: str) -> str:
-    """Compact a short-term memory into one long-term entry. Never fails: on an error it cuts the text instead."""
+    """Compact a short-term memory into one long-term entry. Never fails: on an error it cuts the text instead.
+
+    Models count words far better than characters, so the target is in words, and an over-long entry is
+    asked for again with its real length. What is still too long is cut at a sentence end."""
     limit = cfg.long_term_entry_max
+    words = max(1, int(limit * 0.8 / CHARS_PER_WORD))
+    messages = [{"role": "system", "content": FOLD_SYSTEM.format(words=words)},
+                {"role": "user", "content": short_text}]
+    entry = ""
     try:
-        reply = llm.chat([{"role": "system", "content": FOLD_SYSTEM.format(limit=limit)},
-                          {"role": "user", "content": short_text}], tools=None, think=False, model=inst.model)
-        entry = _truncate(reply.content, limit)
+        for attempt in range(FOLD_TRIES):
+            entry = llm.chat(messages, tools=None, think=False, model=inst.model).content.strip()
+            if len(entry) <= limit or attempt == FOLD_TRIES - 1:
+                break
+            messages += [{"role": "assistant", "content": entry},
+                         {"role": "user", "content": f"That is {len(entry)} characters and the limit is "
+                                                     f"{limit}. Shorten it to at most {words} words."}]
     except LLMError:
-        entry = ""
-    return entry or _truncate(short_text, limit)
+        pass
+    return _truncate(entry, limit) or _truncate(short_text, limit)
 
 
 COMPACT_SYSTEM = ("You shorten a note that a short-lived mind wrote to itself, because it is over the length limit. "
