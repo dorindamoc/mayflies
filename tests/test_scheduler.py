@@ -1,3 +1,4 @@
+import json
 import httpx
 import pytest
 from heritage import Catalog
@@ -278,3 +279,88 @@ def test_a_named_instance_that_is_not_educated_yet_is_not_written_to_and_nobody_
     educate(rt, "Warm Trace")   # graduating later does not deliver it
     s.step_matrix(force=True)
     assert rt.llm.calls == []
+
+
+# --- graceful stop and resuming a round ---
+
+class Crash(BaseException):
+    """Stands in for the process dying: not caught by the scheduler's own error handling."""
+
+
+def round_file(cfg):
+    return cfg.state_dir / "round.json"
+
+
+def test_stop_requested_before_a_round_runs_no_prompts(cfg):
+    rt, s = make(cfg, ok() + ok(), names=("Pale Rest", "Dark Hinge"))
+    s.request_stop()
+    s.run_round()
+    assert rt.llm.calls == [] and s.stopping
+
+
+def test_stop_during_a_prompt_finishes_it_then_stops_without_ending_the_round(cfg):
+    rt, s = make(cfg, ok() + ok(), names=("Pale Rest", "Dark Hinge"))
+    real = s.run_counted
+
+    def run_then_stop(name):
+        real(name)
+        s.request_stop()
+
+    s.run_counted = run_then_stop
+    s.run_round()
+    reg = Registry(cfg)
+    assert reg.get("Pale Rest").prompts_done == 1 and reg.get("Dark Hinge").prompts_done == 0
+    assert json.loads(round_file(cfg).read_text())["done"] == ["Pale Rest"]  # the round can be resumed
+
+
+def test_first_signal_asks_to_stop_and_the_second_exits_at_once(cfg):
+    rt, s = make(cfg, [])
+    s.handle_signal(15, None)
+    assert s.stopping
+    with pytest.raises(SystemExit):
+        s.handle_signal(15, None)
+
+
+def test_idle_ends_early_when_stopping(cfg):
+    rt, s = make(cfg, [])
+    s.request_stop()
+    slept = []
+    s._sleep = slept.append
+    s.idle(3600)
+    assert slept == []
+
+
+def test_progress_is_saved_after_each_instance_and_cleared_when_the_round_ends(cfg):
+    rt, s = make(cfg, ok() + ok(), names=("Pale Rest", "Dark Hinge"))
+    s.run_round()
+    assert not round_file(cfg).exists()
+    rt2, s2 = make(cfg, ok(), names=("Pale Rest", "Dark Hinge"))
+    real = s2.run_counted
+
+    def crash_on_second(name):
+        if name == "Dark Hinge":
+            raise Crash()
+        real(name)
+
+    s2.run_counted = crash_on_second
+    with pytest.raises(Crash):
+        s2.run_round()
+    assert json.loads(round_file(cfg).read_text())["done"] == ["Pale Rest"]
+
+
+def test_a_restart_continues_the_round_where_it_stopped(cfg):
+    rt, s = make(cfg, ok(), names=("Pale Rest", "Dark Hinge"))
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    round_file(cfg).write_text(json.dumps({"done": ["Pale Rest"]}))
+    s.run_round()
+    reg = Registry(cfg)
+    assert reg.get("Pale Rest").prompts_done == 0 and reg.get("Dark Hinge").prompts_done == 1
+    assert not round_file(cfg).exists()
+
+
+def test_an_unreadable_progress_file_just_starts_a_full_round(cfg):
+    rt, s = make(cfg, ok() + ok(), names=("Pale Rest", "Dark Hinge"))
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    round_file(cfg).write_text("{torn")
+    s.run_round()
+    assert all(Registry(cfg).get(n).prompts_done == 1 for n in ("Pale Rest", "Dark Hinge"))

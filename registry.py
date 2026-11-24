@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Optional
 
 from config import Config
-from store import stamp
+from store import atomic_write, stamp
 
 
 @dataclass
@@ -30,8 +30,18 @@ class Registry:
         self._items: dict = {}
         if self.path.exists():
             known = {f.name for f in fields(Instance)}
-            for d in json.loads(self.path.read_text()):
+            for d in self._load_records():
                 self._items[d["name"]] = Instance(**{k: v for k, v in d.items() if k in known})
+
+    def _load_records(self) -> list:
+        """The registry file, or the last good copy of it if the file itself is unreadable."""
+        try:
+            return json.loads(self.path.read_text())
+        except ValueError:
+            backup = self.path.with_name(self.path.name + ".bak")
+            if not backup.exists():
+                raise
+            return json.loads(backup.read_text())
 
     def pick_model(self, parents=(), rng=None, mutation_rate: float = 0.15) -> str:
         """Offspring inherit a parent's model (small chance of a weighted-random one); everyone else gets
@@ -73,8 +83,8 @@ class Registry:
 
     def save(self) -> None:
         self.cfg.state_dir.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps([asdict(i) for i in self._items.values()], indent=2))
-        (self.cfg.memory_dir / "registry.md").write_text(self.render_markdown())
+        atomic_write(self.path, json.dumps([asdict(i) for i in self._items.values()], indent=2), backup=True)
+        atomic_write(self.cfg.memory_dir / "registry.md", self.render_markdown())
 
     def render_markdown(self) -> str:
         lines = ["# Registry", "", f"Alive: {len(self.alive())} of {self.cfg.max_population}", ""]

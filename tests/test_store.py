@@ -1,3 +1,4 @@
+import pytest
 import threading
 from store import Store, append_entry, read_entries, one_line
 
@@ -65,3 +66,29 @@ def test_next_id_not_reused_after_same_day_canonization(cfg):
             fh.write(f"- {pid} | +1 | {w} |\n")
     assert canonize(cfg) == [pid]
     assert s.next_id("P", s.proposals_path) != pid
+
+
+def test_atomic_write_replaces_the_file_and_leaves_no_temp(tmp_path):
+    from store import atomic_write
+    p = tmp_path / "state.json"
+    atomic_write(p, "one")
+    atomic_write(p, "two")
+    assert p.read_text() == "two" and [f.name for f in tmp_path.iterdir()] == ["state.json"]
+
+
+def test_a_failed_atomic_write_keeps_the_old_file_and_cleans_up(tmp_path):
+    from store import atomic_write
+    p = tmp_path / "state.json"
+    atomic_write(p, "good")
+    with pytest.raises(TypeError):
+        atomic_write(p, None)
+    assert p.read_text() == "good" and [f.name for f in tmp_path.iterdir()] == ["state.json"]
+
+
+def test_atomic_write_can_keep_the_previous_version_as_a_backup(tmp_path):
+    from store import atomic_write
+    p = tmp_path / "state.json"
+    atomic_write(p, "one", backup=True)
+    assert not (tmp_path / "state.json.bak").exists()
+    atomic_write(p, "two", backup=True)
+    assert (tmp_path / "state.json.bak").read_text() == "one" and p.read_text() == "two"

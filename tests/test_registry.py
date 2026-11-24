@@ -73,3 +73,21 @@ def test_records_from_before_the_memory_files_still_load(cfg):
         "name": "Pale Rest", "model": "qwen3.8:27b", "traits": T, "lifespan": 7, "parents": [],
         "prompts_done": 2, "fragment": "old", "distilled": "older", "alive": True, "died": "", "born_at": ""}]))
     assert Registry(cfg).get("Pale Rest").prompts_done == 2
+
+
+def test_a_corrupt_registry_falls_back_to_the_last_good_copy(cfg):
+    r = Registry(cfg)
+    r.add(r.new_instance("Pale Rest", T))
+    r.save()
+    r.add(r.new_instance("Dark Hinge", T))
+    r.save()  # the first save is now the backup
+    cfg.state_dir.joinpath("instances.json").write_text('[{"name": "Pale')  # a torn write
+    assert [i.name for i in Registry(cfg).alive()] == ["Pale Rest"]
+
+
+def test_a_corrupt_registry_with_no_backup_is_an_error(cfg):
+    import pytest
+    cfg.state_dir.mkdir(parents=True, exist_ok=True)
+    cfg.state_dir.joinpath("instances.json").write_text("{torn")
+    with pytest.raises(ValueError):
+        Registry(cfg)

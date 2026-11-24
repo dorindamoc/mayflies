@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from budget import est_tokens
 from config import Config
+from store import atomic_write
 
 NOTE_LABEL = "I wanted to remember:"
 
@@ -20,9 +21,7 @@ class Memories:
         return path.read_text().strip() if path.exists() else ""
 
     def _write(self, name: str, which: str, text: str) -> None:
-        path = self._file(name, which)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        atomic_write(self._file(name, which), text)
 
     # --- short term: a recap of the last prompt, and the note the instance chose to keep ---
     def short(self, name: str) -> tuple:

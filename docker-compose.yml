@@ -2,6 +2,8 @@ services:
   mayflies:
     build: .
     restart: unless-stopped
+    # a prompt can take many minutes; on stop the scheduler finishes the current one, so give it time
+    stop_grace_period: 20m
     env_file:
       - path: .env
         required: false

@@ -37,3 +37,10 @@ def test_long_term_fills_towards_its_token_budget(cfg):
     assert 0.45 < m.fill("Pale Rest") < 0.55 and not m.is_full("Pale Rest")
     m.append_long("Pale Rest", "x" * (cfg.long_term_tokens * 4))
     assert m.is_full("Pale Rest")
+
+
+def test_memory_files_are_written_atomically(cfg):
+    m = Memories(cfg)
+    m.set_short("Pale Rest", "recap", "note")
+    m.append_long("Pale Rest", "entry")
+    assert sorted(f.name for f in (cfg.memories_dir / "Pale Rest").iterdir()) == ["long_term.md", "short_term.md"]

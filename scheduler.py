@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import json
+import signal
 import sys
 import time
 from datetime import datetime, timezone
@@ -15,6 +17,7 @@ from heartbeat import run_prompt
 from matrix import MatrixInbox
 from name_generator import generate_name, load_retired
 from runtime import Runtime
+from store import atomic_write
 from setup import init_home
 from trait_generator import random_traits
 
@@ -30,6 +33,37 @@ class Scheduler:
         self.inbox = inbox or MatrixInbox(self.cfg.state_dir / "matrix.json")
         self._clock, self._sleep = clock, sleep
         self._last_poll = None
+        self._stop = False
+
+    # --- stopping ---
+    @property
+    def stopping(self) -> bool:
+        return self._stop
+
+    def request_stop(self) -> None:
+        """Finish the prompt in progress, then stop; nothing is cut off midway."""
+        self._stop = True
+
+    def handle_signal(self, signum, frame) -> None:
+        if self._stop:
+            log("second stop signal: exiting now; the prompt in progress will be repeated on restart")
+            raise SystemExit(1)
+        log("stop requested: finishing the current prompt, then stopping (signal again to exit at once)")
+        self.request_stop()
+
+    # --- progress through a round, so a restart continues it ---
+    @property
+    def _round_path(self):
+        return self.cfg.state_dir / "round.json"
+
+    def _load_round(self) -> set:
+        try:
+            return set(json.loads(self._round_path.read_text())["done"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return set()
+
+    def _save_round(self, done: set) -> None:
+        atomic_write(self._round_path, json.dumps({"done": sorted(done)}))
 
     # --- population ---
     def seed_population(self) -> None:
@@ -94,6 +128,8 @@ class Scheduler:
         # only instances that finished their first (reading) prompt are written to
         educated = [i.name for i in self.rt.registry.alive() if i.prompts_done >= 1]
         for msg, name in self.inbox.due(educated, alive):
+            if self.stopping:
+                break
             inst = self.rt.registry.get(name)
             if inst is None or not inst.alive:
                 continue
@@ -109,11 +145,18 @@ class Scheduler:
 
     # --- rounds ---
     def run_round(self) -> None:
-        for name in [i.name for i in self.rt.registry.alive()]:
+        done = self._load_round()
+        for name in [i.name for i in self.rt.registry.alive() if i.name not in done]:
+            if self.stopping:
+                return  # the round is unfinished: its progress stays on disk for the next start
             self.step_matrix()
             inst = self.rt.registry.get(name)
-            if inst is not None and inst.alive:
+            if inst is not None and inst.alive and not self.stopping:
                 self.run_counted(name)
+                done.add(name)
+                self._save_round(done)
+        if self.stopping and any(i.name not in done for i in self.rt.registry.alive()):
+            return
         try:
             for b in process_requests(self.rt):
                 log(f"born: {b.name} (parents: {', '.join(b.parents) or 'none'})")
@@ -125,11 +168,12 @@ class Scheduler:
         except Exception as e:
             log(f"canonize failed: {type(e).__name__}: {e}")
         self.rt.registry.save()
+        self._round_path.unlink(missing_ok=True)
 
     def idle(self, seconds: int) -> None:
         chunk = max(1, self.cfg.matrix_poll_seconds)
         waited = 0
-        while waited < seconds:
+        while waited < seconds and not self.stopping:
             step = min(chunk, seconds - waited)
             self._sleep(step)
             waited += step
@@ -154,10 +198,15 @@ def main(argv=None) -> None:
     if "--once" in argv:
         sched.run_round()
         return
-    while True:
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, sched.handle_signal)
+    while not sched.stopping:
         sched.run_round()
+        if sched.stopping:
+            break
         log(f"round complete; sleeping {cfg.heartbeat_interval}s")
         sched.idle(cfg.heartbeat_interval)
+    log("stopped cleanly")
 
 
 if __name__ == "__main__":

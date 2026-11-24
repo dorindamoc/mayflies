@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 
 from config import Config
+from store import atomic_write
 
 
 class MatrixClient:
@@ -70,7 +71,7 @@ class MatrixInbox:
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.seen = self.seen[-self.MAX_SEEN:]
-        self.path.write_text(json.dumps({"seen": self.seen, "pending": self.pending}))
+        atomic_write(self.path, json.dumps({"seen": self.seen, "pending": self.pending}))
 
     def ingest(self, messages: list) -> None:
         baseline = self._fresh

@@ -7,7 +7,7 @@ import re
 
 from name_generator import generate_name, load_retired
 from runtime import Runtime
-from store import read_entries
+from store import atomic_write, read_entries
 from trait_generator import blend_traits, random_traits
 
 _ID = re.compile(r"^### ((?:SR|PA)-\d{4}-\d{2}-\d{2}-\d{3})", re.M)
@@ -25,7 +25,7 @@ def _load_done(rt: Runtime) -> set:
 
 def _save_done(rt: Runtime, done: set) -> None:
     rt.cfg.state_dir.mkdir(parents=True, exist_ok=True)
-    (rt.cfg.state_dir / "processed.json").write_text(json.dumps(sorted(done)))
+    atomic_write(rt.cfg.state_dir / "processed.json", json.dumps(sorted(done)))
 
 
 def _new_name(rt: Runtime) -> str:
