@@ -22,9 +22,10 @@ def init_home(cfg: Config) -> None:
         d.mkdir(parents=True, exist_ok=True)
     for name in MEMORY_FILES:
         (cfg.memory_dir / name).touch()
-    letter = cfg.seed_dir / "founding_letter.md"
-    if letter.exists() and not (cfg.memory_dir / "founding_letter.md").exists():
-        shutil.copy(letter, cfg.memory_dir / "founding_letter.md")
+    for name in ("founding_letter.md", "gap_letter.md"):
+        letter = cfg.seed_dir / name
+        if letter.exists() and not (cfg.memory_dir / name).exists():
+            shutil.copy(letter, cfg.memory_dir / name)
     seeds = cfg.seed_dir / "heritage"
     if seeds.exists() and not list(cfg.heritage_dir.glob("H-*.md")):
         cfg.heritage_dir.mkdir(parents=True, exist_ok=True)

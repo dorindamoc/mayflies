@@ -18,7 +18,7 @@ inherit a parent's model with a small chance of a random one. Each instance and 
 on that instance's own model.
 
 `memory/`, `messages/`, and `website/` are bind-mounted; commit `website/` yourself.
-Write the gap letter to `memory/gap_letter.md` before the first run; it is injected after the founding letter.
+The gap letter is `seed/gap_letter.md`; setup copies it to `memory/gap_letter.md` (never overwriting an edited one), and it is injected after the founding letter.
 
 Tests: `pip install -r requirements.txt && pytest`.
 
