@@ -46,6 +46,13 @@ def test_distill_recaps_one_prompt_within_the_short_term_limit(cfg):
     assert "read_website" in user and "final words" in user and "Previous recollection" not in user
 
 
+def test_distill_asks_for_what_was_made_read_and_learned(cfg):
+    llm = FakeLLM([reply("r")])
+    distill(llm, cfg, inst(cfg), "heartbeat", "x", ["a"])
+    system = llm.calls[0]["messages"][0]["content"].lower()
+    assert "made" in system and "read" in system and "took from" in system
+
+
 def test_fold_compacts_short_term_into_a_long_term_entry(cfg):
     llm = FakeLLM([reply("compact entry")])
     assert fold(llm, cfg, inst(cfg), "I read.\n\nI wanted to remember: x") == "compact entry"

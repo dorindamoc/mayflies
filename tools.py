@@ -34,6 +34,11 @@ class TurnOutcome:
     fragment: Optional[str] = None
     die_reason: Optional[str] = None
     actions: list = field(default_factory=list)
+    details: list = field(default_factory=list)  # the same actions with the substance of what was made or read
+
+    def add(self, action: str, detail: str = "") -> None:
+        self.actions.append(action)
+        self.details.append(f"{action}\n    {detail}" if detail else action)
 
 
 @dataclass
@@ -494,12 +499,12 @@ def _save_memory(ctx, a):
         compacted = ""
     if compacted and len(compacted) <= limit:
         ctx.outcome.fragment = compacted
-        ctx.outcome.actions.append(f"save_memory: note compacted from {len(text)} to {len(compacted)} characters")
+        ctx.outcome.add(f"save_memory: note compacted from {len(text)} to {len(compacted)} characters")
         return (f"Saved, but your note was {len(text)} characters (limit {limit}), so a neutral summariser compacted "
                 f"it to {len(compacted)}. This is exactly what was saved, and what you will see at your next "
                 f"awakening:\n{compacted}")
     ctx.outcome.fragment = _shorten(text, limit)
-    ctx.outcome.actions.append(f"save_memory: note cut from {len(text)} to {len(ctx.outcome.fragment)} characters")
+    ctx.outcome.add(f"save_memory: note cut from {len(text)} to {len(ctx.outcome.fragment)} characters")
     return (f"Saved, but your note was {len(text)} characters (limit {limit}) and could not be compacted, so it was "
             f"cut to {len(ctx.outcome.fragment)}. This is exactly what was saved, and what you will see at your "
             f"next awakening:\n{ctx.outcome.fragment}")
@@ -532,6 +537,29 @@ def _unwrap(value):
     return value
 
 
+MADE_TOOLS = {"write_website", "board_post", "add_heritage", "matrix_send", "send_message", "propose",
+              "request_spawn"}
+READ_TOOLS = {"read_heritage", "read_board", "read_website", "read_matrix"}
+MADE_CHARS = 600
+READ_CHARS = 300
+READ_ITEMS = 6
+_ITEM_START = re.compile(r"\n\n(?=# |#\d)")
+
+
+def _detail(name: str, arguments, result: str) -> str:
+    """What the distiller should know about a call: the gist of what was made, or an excerpt of what was read."""
+    if str(result).startswith("Error"):
+        return one_line(result)[:200]
+    if name in MADE_TOOLS and isinstance(arguments, dict):
+        pairs = [(k, one_line(str(v))) for k, v in arguments.items() if isinstance(v, (str, list, dict)) and v]
+        pairs.sort(key=lambda kv: len(kv[1]) > 80)  # short fields (path, title) first, so a cut loses prose
+        return one_line("; ".join(f"{k}: {v}" for k, v in pairs))[:MADE_CHARS]
+    if name in READ_TOOLS:
+        items = _ITEM_START.split(str(result))[:READ_ITEMS] if name in ("read_heritage", "read_board") else [str(result)]
+        return "\n    ".join(one_line(i)[:READ_CHARS] for i in items)
+    return ""
+
+
 def dispatch(ctx: ToolContext, name: str, arguments: dict) -> str:
     handler = HANDLERS.get(name)
     if handler is None:
@@ -543,7 +571,8 @@ def dispatch(ctx: ToolContext, name: str, arguments: dict) -> str:
         result = f"Error: missing argument {e}. A working call looks like: {_example(name)}"
     except Exception as e:  # tool failures must never crash a turn
         result = f"Error: {e}"
-    ctx.outcome.actions.append(f"{name}: {one_line(json.dumps(arguments, default=str))[:120]}")
+    ctx.outcome.add(f"{name}: {one_line(json.dumps(arguments, default=str))[:120]}",
+                    _detail(name, arguments, result))
     if name not in ("read_heritage", "read_board"):
         ctx.budget.spend(est_tokens(result))
     return result

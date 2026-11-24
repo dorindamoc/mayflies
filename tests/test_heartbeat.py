@@ -201,3 +201,10 @@ def test_reading_prompt_tool_results_report_true_progress(cfg):
     run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
     result = [m["content"] for m in rt.llm.calls[1]["messages"] if m["role"] == "tool"][0]
     assert "You have read 603 of the 603 tokens" in result
+
+
+def test_distiller_is_given_what_was_made_and_read(cfg):
+    rt = make_rt(cfg, [LLMReply("", [ToolCall("board_post", {"text": "x" * 200 + " the pond keeps nothing"})]),
+                       LLMReply("done"), LLMReply("recap")])
+    run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "the pond keeps nothing" in rt.llm.calls[-1]["messages"][1]["content"]

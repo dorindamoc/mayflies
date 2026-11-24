@@ -71,11 +71,11 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
             result = dispatch(ctx, call.name, call.arguments)
             messages.append({"role": "tool", "tool_name": call.name, "content": result})
     else:  # no break: the model was still asking for tools when the rounds ran out
-        outcome.actions.append(f"(tool round cap reached: {cfg.max_tool_rounds} rounds)")
+        outcome.add(f"(tool round cap reached: {cfg.max_tool_rounds} rounds)")
 
     rt.store.inbox_ack(inst.name)
     try:
-        recap = distill(rt.llm, cfg, inst, kind, text, outcome.actions)
+        recap = distill(rt.llm, cfg, inst, kind, text, outcome.details)
     except LLMError:
         recap = ""
     recap = recap or _truncate("; ".join(outcome.actions), cfg.short_term_max)  # at least what it did

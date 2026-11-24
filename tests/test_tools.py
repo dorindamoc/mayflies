@@ -515,3 +515,41 @@ def test_read_matrix_costs_context_like_any_other_reading(ctx):
     before = ctx.budget.remaining
     dispatch(ctx, "read_matrix", {})
     assert ctx.budget.remaining < before
+
+
+def test_made_things_are_recorded_with_their_substance_cut_to_600_characters(ctx):
+    dispatch(ctx, "write_website", {"path": "art/pond.md", "content": "The pond keeps nothing. " + "ripple " * 200})
+    dispatch(ctx, "board_post", {"text": "What would you change in the archive?"})
+    poem, post = ctx.outcome.details
+    assert poem.startswith("write_website") and "art/pond.md" in poem and "The pond keeps nothing." in poem
+    assert len(poem.split("\n", 1)[1].strip()) <= 600 and "ripple" in poem
+    assert "What would you change in the archive?" in post
+
+
+def test_a_long_title_does_not_push_the_path_out_of_the_record(ctx):
+    dispatch(ctx, "write_website", {"content": "c" * 5000, "path": "art/pond.md"})
+    assert "art/pond.md" in ctx.outcome.details[0]
+
+
+def test_what_was_read_is_recorded_as_an_excerpt_per_item(ctx):
+    a = ctx.catalog.add("a", "On Mud", ["mud"], "About mud", "mud is old " * 200)
+    b = ctx.catalog.add("b", "On Rain", ["rain"], "About rain", "rain is new " * 200)
+    dispatch(ctx, "read_heritage", {"ids": [a.id, b.id]})
+    detail = ctx.outcome.details[0]
+    assert detail.startswith("read_heritage") and "mud is old" in detail and "rain is new" in detail
+    assert all(len(line.strip()) <= 300 for line in detail.split("\n")[1:])
+
+
+def test_listings_and_votes_have_no_extra_detail(ctx):
+    dispatch(ctx, "list_board", {})
+    assert ctx.outcome.details == ["list_board: {}"]
+
+
+def test_a_failed_call_records_the_error(ctx):
+    dispatch(ctx, "read_website", {"path": "missing.md"})
+    assert "Error" in ctx.outcome.details[0]
+
+
+def test_the_short_action_list_is_unchanged(ctx):
+    dispatch(ctx, "board_post", {"text": "hello"})
+    assert ctx.outcome.actions == ['board_post: {"text": "hello"}']

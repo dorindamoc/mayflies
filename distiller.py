@@ -6,8 +6,10 @@ from config import Config
 from llm import LLMError
 
 SYSTEM = ("You compress what a short-lived mind just did into a recap it will read when it wakes next. You are "
-          "given what it did this prompt and its final words. Write one compact first-person recap: what it was "
-          "doing, what mattered to it, what it left unfinished. Keep what is important, drop what is not. "
+          "given its actions, with the substance of what it made (the idea of a poem, what it told someone, what "
+          "it posted) and an excerpt of what it read, and its final words. Write one compact first-person recap: "
+          "what it made and its main idea, what it read, what it took from that, and what it left unfinished. "
+          "Keep what is important, drop what is not. "
           "Output only the recap, no preamble, at most {limit} characters.")
 
 
@@ -23,7 +25,7 @@ def distill(llm, cfg: Config, inst, kind: str, final_text: str, actions: list) -
     """Recap one prompt for the short-term memory."""
     acts = "\n".join(f"- {a}" for a in actions) or "(none)"
     user = (f"Prompt kind: {kind}\n"
-            f"Actions taken this prompt:\n{acts}\n"
+            f"Actions taken this prompt (what it made, what it read):\n{acts}\n"
             f"Final words this prompt:\n{final_text or '(none)'}")
     reply = llm.chat([{"role": "system", "content": SYSTEM.format(limit=cfg.short_term_max)},
                       {"role": "user", "content": user}], tools=None, think=False, model=inst.model)
