@@ -11,6 +11,7 @@ def test_defaults(tmp_path):
     assert cfg.vote_threshold == 3
     assert cfg.memory_fragment_max == 1000
     assert cfg.num_ctx == 32768
+    assert cfg.num_predict == 8192
     assert cfg.think is False
     assert cfg.memory_dir == tmp_path / "memory"
     assert cfg.state_dir == tmp_path / "memory" / ".state"
@@ -67,3 +68,7 @@ def test_first_read_allowance_is_a_third_of_the_context_by_default(tmp_path):
     assert cfg.first_read_allowance == int(cfg.num_ctx * 0.33)
     cfg = Config.from_env(home=tmp_path, env={"FIRST_READ_FRACTION": "0.5", "NUM_CTX": "1000"})
     assert cfg.first_read_allowance == 500
+
+
+def test_num_predict_can_be_set_from_env(tmp_path):
+    assert Config.from_env(home=tmp_path, env={"NUM_PREDICT": "4096"}).num_predict == 4096

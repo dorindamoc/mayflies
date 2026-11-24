@@ -19,6 +19,7 @@ class Config:
     model_think: dict = field(default_factory=dict)
     first_read_fraction: float = 0.33
     num_ctx: int = 32768
+    num_predict: int = 8192
     response_reserve: int = 2048
     think: bool = False
     max_tool_rounds: int = 6
@@ -127,6 +128,7 @@ class Config:
             model_think=think_map,
             first_read_fraction=float(env.get("FIRST_READ_FRACTION", cls.first_read_fraction)),
             num_ctx=i("NUM_CTX", cls.num_ctx),
+            num_predict=i("NUM_PREDICT", cls.num_predict),
             think=s("THINK", "false").lower() in ("1", "true", "yes"),
             max_tool_rounds=i("MAX_TOOL_ROUNDS", cls.max_tool_rounds),
             max_population=i("MAX_POPULATION", cls.max_population),

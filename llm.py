@@ -74,7 +74,8 @@ class LLMClient:
             "messages": messages,
             "stream": False,
             "think": self.cfg.think_for(model) if think is None else think,
-            "options": {"num_ctx": self.cfg.num_ctx, **(options or {})},
+            "options": {"num_ctx": self.cfg.num_ctx,
+                        "num_predict": self.cfg.num_predict, **(options or {})},
         }
         if model in self._no_think:
             payload.pop("think")

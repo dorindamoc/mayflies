@@ -21,6 +21,7 @@ def test_plain_reply_and_payload(cfg):
     assert r.content == "hi" and r.prompt_tokens == 10 and r.tool_calls == []
     assert seen["model"] == "qwen3.8:27b" and seen["think"] is False
     assert seen["options"]["num_ctx"] == 32768 and seen["stream"] is False
+    assert seen["options"]["num_predict"] == cfg.num_predict == 8192
 
 
 def test_native_tool_calls_and_string_arguments(cfg):
@@ -104,7 +105,7 @@ def test_per_call_options_merge_with_num_ctx(cfg):
         return httpx.Response(200, json={"message": {"role": "assistant", "content": "hi"}})
 
     client(cfg, handler).chat([{"role": "user", "content": "x"}], options={"temperature": 0.9})
-    assert seen["options"] == {"num_ctx": 32768, "temperature": 0.9}
+    assert seen["options"] == {"num_ctx": 32768, "num_predict": 8192, "temperature": 0.9}
 
 
 def test_think_flag_follows_the_models_setting(tmp_path):
