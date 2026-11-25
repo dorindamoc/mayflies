@@ -23,7 +23,9 @@ class Config:
     response_reserve: int = 2048
     think: bool = False
     max_tool_rounds: int = 6
-    max_population: int = 10
+    max_population: int = 20
+    education_picks: int = 3
+    offer_expiry_rounds: int = 3
     initial_population: int = 10
     memory_fragment_max: int = 1000
     short_term_max: int = 500
@@ -142,6 +144,8 @@ class Config:
             think=s("THINK", "false").lower() in ("1", "true", "yes"),
             max_tool_rounds=i("MAX_TOOL_ROUNDS", cls.max_tool_rounds),
             max_population=i("MAX_POPULATION", cls.max_population),
+            education_picks=i("EDUCATION_PICKS", cls.education_picks),
+            offer_expiry_rounds=i("OFFER_EXPIRY_ROUNDS", cls.offer_expiry_rounds),
             initial_population=i("INITIAL_POPULATION", cls.initial_population),
             memory_fragment_max=i("MEMORY_FRAGMENT_MAX", cls.memory_fragment_max),
             short_term_max=i("SHORT_TERM_MAX", cls.short_term_max),

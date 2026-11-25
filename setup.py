@@ -14,7 +14,7 @@ from pathlib import Path
 from config import Config
 
 MEMORY_FILES = ["registry.md", "board.md", "proposals.md", "votes.md", "rules.md",
-                "spawn_requests.md", "procreation_agreements.md"]
+                "procreation_agreements.md"]
 
 
 def init_home(cfg: Config) -> None:

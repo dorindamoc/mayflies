@@ -125,7 +125,7 @@ def test_ollama_outage_does_not_count_or_kill(cfg):
 def test_round_runs_each_instance_then_births_and_canonizes(cfg):
     rt, s = make(cfg, ok() + ok(), names=("Pale Rest", "Dark Hinge"))
     object.__setattr__(cfg, "max_population", 3)
-    append_entry(rt.store.spawn_path, "### SR-2026-11-13-001 — by Pale Rest\nPurpose: p\nContext: c")
+    append_entry(rt.store.procreation_path, "### PA-2026-11-13-001\nParents: Pale Rest | Dark Hinge\nEducation: ")
     append_entry(rt.store.proposals_path, "### P-2026-11-13-001 — T\nAuthor: A\nMotivation: m\nProposed text:\nR")
     for who in "ABC":
         with open(rt.store.votes_path, "a") as fh:

@@ -55,7 +55,11 @@ Tests: `pip install -r requirements.txt && pytest`.
   - `long_term.md`: after every prompt the old short-term memory is compacted into one entry
     (`LONG_TERM_ENTRY_MAX`, 300 characters) and appended. Both memories go straight into the prompt.
 - **Lifespan:** an instance lives until its long-term memory fills `LONG_TERM_FRACTION` (default 0.5) of its context window,
-  then gets one announced last prompt. Without spawns or procreation the world eventually goes quiet; there is no automatic refill.
+  then gets one announced last prompt. Without procreation the world eventually goes quiet; there is no automatic refill.
+- **Procreation:** the only way to be born after the first cohort. Two instances must both call `agree_to_procreate`
+  (the first call is an offer, answered within `OFFER_EXPIRY_ROUNDS`, 3 by default), and each names up to
+  `EDUCATION_PICKS` (3) heritage entries the child reads first. The child gets blended traits, a random model from the
+  pool, the parents' picks plus one random entry, and no task. There is no spawning.
 - **Models:** `qwen3.8:27b` and `gemma4:26b`. Every call is capped at `NUM_PREDICT` generated tokens (default 8192).
 
 ## Matrix

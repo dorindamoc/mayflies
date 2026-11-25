@@ -91,13 +91,44 @@ def test_propose_and_vote_rules(ctx):
     assert line.count("|") == 3 and "Dark Hinge" in line
 
 
-def test_spawn_and_procreation_requests(ctx):
-    assert dispatch(ctx, "request_spawn", {"purpose": "Archivist", "context": "tidy"}).startswith("Requested")
-    assert "Archivist" in ctx.store.spawn_path.read_text()
+def test_request_spawn_is_gone(ctx):
+    assert "request_spawn" not in {s["function"]["name"] for s in tool_specs()}
+    assert dispatch(ctx, "request_spawn", {"purpose": "x"}).startswith("Error")
+
+
+def test_procreation_needs_a_valid_partner_and_valid_picks(ctx):
+    h = ctx.catalog.add("a", "T", ["culture"], "s", "b").id
     assert dispatch(ctx, "agree_to_procreate", {"partner": "Pale Rest"}).startswith("Error")
     assert dispatch(ctx, "agree_to_procreate", {"partner": "Ghost Name"}).startswith("Error")
-    assert dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge"}).startswith("Recorded")
-    assert "Parents: Pale Rest | Dark Hinge" in ctx.store.procreation_path.read_text()
+    assert dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge", "picks": ["H-999"]}).startswith("Error")
+    many = [h] + [ctx.catalog.add("a", f"T{i}", ["culture"], "s", "b").id for i in range(ctx.cfg.education_picks)]
+    assert "at most" in dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge", "picks": many})
+    ctx.registry.kill("Dark Hinge", "chosen")
+    assert dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge"}).startswith("Error")
+    assert not ctx.store.procreation_path.exists() or not ctx.store.procreation_path.read_text().strip()
+
+
+def test_procreation_is_an_offer_until_the_partner_agrees_too(ctx):
+    h1 = ctx.catalog.add("a", "One", ["culture"], "s", "b").id
+    h2 = ctx.catalog.add("a", "Two", ["culture"], "s", "b").id
+    out = dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge", "picks": [h1]})
+    assert out.startswith("Offered") and ctx.store.offers()[0]["to"] == "Dark Hinge"
+    note = ctx.store.inbox_peek("Dark Hinge")[0]
+    assert "Pale Rest" in note and "agree_to_procreate" in note and h1 in note
+    assert not ctx.store.procreation_path.exists() or not ctx.store.procreation_path.read_text().strip()
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    out = dispatch(ctx, "agree_to_procreate", {"partner": "Pale Rest", "picks": f"{h2}, {h1}"})
+    assert out.startswith("Agreed") and ctx.store.offers() == []
+    text = ctx.store.procreation_path.read_text()
+    assert "Parents: Pale Rest | Dark Hinge" in text and f"Education: {h1}, {h2}" in text
+
+
+def test_making_the_same_offer_again_replaces_it(ctx):
+    h = ctx.catalog.add("a", "One", ["culture"], "s", "b").id
+    dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge"})
+    dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge", "picks": [h]})
+    assert len(ctx.store.offers()) == 1 and ctx.store.offers()[0]["picks"] == [h]
+
 
 
 def test_website_tools_and_path_safety(ctx):

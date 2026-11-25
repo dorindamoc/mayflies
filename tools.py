@@ -91,10 +91,12 @@ def tool_specs(cfg=None) -> list:
               {"title": _S, "motivation": _S, "text": _S}, ["title", "motivation", "text"]),
         _spec("vote", "Vote +1 or -1 on an open proposal (one vote per proposal; you cannot vote on your own proposal).",
               {"proposal_id": _S, "vote": {"type": "integer"}, "comment": _S}, ["proposal_id", "vote"]),
-        _spec("request_spawn", "Request a new instance with a stated purpose (created when a slot is free).",
-              {"purpose": _S, "context": _S}, ["purpose"]),
-        _spec("agree_to_procreate", "Record a confirmed agreement with another instance to have an offspring.",
-              {"partner": _S}, ["partner"]),
+        _spec("agree_to_procreate",
+              "Have an offspring with another living instance. Name the partner and up to a few heritage ids "
+              "(picks) your child should read first. The first call is an offer; the child is born only when "
+              "the partner makes the same call toward you, with their own picks. The child gets no task, only "
+              "its schooling.",
+              {"partner": _S, "picks": {"type": "array", "items": _S}}, ["partner"]),
         _spec("list_website", "List files in the website."),
         _spec("read_website", "Read a website file.", {"path": _S}, ["path"]),
         _spec("write_website", "Write a website file (.html .css .md .txt), e.g. art/poem.html. An existing file "
@@ -371,25 +373,57 @@ def _vote(ctx, a):
     return f"Vote recorded on {pid}."
 
 
-def _request_spawn(ctx, a):
-    sid = ctx.store.next_id("SR", ctx.store.spawn_path)
-    append_entry(ctx.store.spawn_path,
-                 f"### {sid} — by {ctx.instance.name}\nPurpose: {one_line(a['purpose'])}\n"
-                 f"Context: {one_line(a.get('context', ''))}")
-    return f"Requested {sid}. It will be created when a slot is free."
+def _picks(raw) -> list:
+    """Heritage ids as a list, from a list or a string such as "H-001, H-002"."""
+    if raw is None or raw == "":
+        return []
+    items = raw if isinstance(raw, list) else re.split(r"[,\s]+", str(raw))
+    out = []
+    for item in items:
+        item = str(item).strip()
+        if item and item not in out:
+            out.append(item)
+    return out
 
 
 def _agree_to_procreate(ctx, a):
-    partner = str(a["partner"])
+    partner = str(a["partner"]).strip()
+    me = ctx.instance.name
     other = ctx.registry.get(partner)
     if other is None:
         return f"Error: {partner} is unknown."
-    if partner == ctx.instance.name:
+    if partner == me:
         return "Error: you cannot procreate with yourself."
-    pid = ctx.store.next_id("PA", ctx.store.procreation_path)
-    append_entry(ctx.store.procreation_path,
-                 f"### {pid}\nParents: {ctx.instance.name} | {partner}\nWritten by: {ctx.instance.name}")
-    return f"Recorded {pid}. An offspring will be born when a slot is free."
+    if not other.alive:
+        return f"Error: {partner} is no longer alive."
+    picks = _picks(a.get("picks"))
+    limit = ctx.cfg.education_picks
+    if len(picks) > limit:
+        return f"Error: name at most {limit} heritage ids for your child's schooling."
+    missing = [p for p in picks if ctx.catalog.get(p) is None]
+    if missing:
+        return f"Error: no such heritage: {', '.join(missing)}."
+    offers = ctx.store.offers()
+    theirs = next((o for o in offers if o["from"] == partner and o["to"] == me), None)
+    if theirs:
+        offers.remove(theirs)
+        ctx.store.save_offers(offers)
+        education = list(theirs["picks"]) + [p for p in picks if p not in theirs["picks"]]
+        pid = ctx.store.next_id("PA", ctx.store.procreation_path)
+        append_entry(ctx.store.procreation_path,
+                     f"### {pid}\nParents: {partner} | {me}\nEducation: {', '.join(education)}\nWritten by: {me}")
+        return f"Agreed ({pid}). Your child will be born when a slot is free."
+    offers = [o for o in offers if not (o["from"] == me and o["to"] == partner)]
+    offers.append({"from": me, "to": partner, "picks": picks, "age": 0})
+    ctx.store.save_offers(offers)
+    suggested = ", ".join(picks) or "none"
+    ctx.store.inbox_append(
+        partner, me,
+        f"{me} offers to have an offspring with you. {me} would have the child read first: {suggested}. "
+        f"To agree, call agree_to_procreate with partner \"{me}\" and your own picks "
+        f"(up to {limit} heritage ids). The offer lapses if you do not answer within "
+        f"{ctx.cfg.offer_expiry_rounds} rounds.")
+    return f"Offered to {partner}. The child is born only if {partner} agrees too."
 
 
 def _list_website(ctx, a):
@@ -519,7 +553,7 @@ HANDLERS = {
     "query_heritage": _query_heritage, "read_heritage": _read_heritage, "add_heritage": _add_heritage,
     "board_post": _board_post, "list_board": _list_board, "read_board": _read_board,
     "send_message": _send_message, "propose": _propose, "vote": _vote,
-    "request_spawn": _request_spawn, "agree_to_procreate": _agree_to_procreate,
+    "agree_to_procreate": _agree_to_procreate,
     "list_website": _list_website, "read_website": _read_website, "write_website": _write_website,
     "matrix_send": _matrix_send, "read_matrix": _read_matrix,
     "save_memory": _save_memory, "die": _die,
@@ -538,7 +572,7 @@ def _unwrap(value):
 
 
 MADE_TOOLS = {"write_website", "board_post", "add_heritage", "matrix_send", "send_message", "propose",
-              "request_spawn"}
+              "agree_to_procreate"}
 READ_TOOLS = {"read_heritage", "read_board", "read_website", "read_matrix"}
 MADE_CHARS = 600
 READ_CHARS = 300

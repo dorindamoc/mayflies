@@ -13,7 +13,7 @@ def test_init_creates_files_and_copies_seed(cfg):
     seeded(cfg)
     init_home(cfg)
     for f in ("registry.md", "board.md", "proposals.md", "votes.md", "rules.md",
-              "spawn_requests.md", "procreation_agreements.md", "founding_letter.md", "gap_letter.md"):
+              "procreation_agreements.md", "founding_letter.md", "gap_letter.md"):
         assert (cfg.memory_dir / f).exists()
     assert len(list(cfg.heritage_dir.glob("H-*.md"))) == 7
     assert cfg.messages_dir.is_dir() and (cfg.memory_dir / "archive").is_dir()

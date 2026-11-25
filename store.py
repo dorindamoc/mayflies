@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import re
 import shutil
@@ -94,9 +95,23 @@ class Store:
         self.board_path = m / "board.md"
         self.proposals_path = m / "proposals.md"
         self.votes_path = m / "votes.md"
-        self.spawn_path = m / "spawn_requests.md"
         self.procreation_path = m / "procreation_agreements.md"
         self.rules_path = m / "rules.md"
+
+    # --- procreation offers (one parent has proposed, the other has not yet agreed) ---
+    @property
+    def offers_path(self):
+        return self.cfg.state_dir / "offers.json"
+
+    def offers(self) -> list:
+        try:
+            return json.loads(self.offers_path.read_text())
+        except (OSError, ValueError):
+            return []
+
+    def save_offers(self, offers: list) -> None:
+        self.cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write(self.offers_path, json.dumps(offers))
 
     # --- board ---
     def board_post(self, author: str, text: str) -> None:

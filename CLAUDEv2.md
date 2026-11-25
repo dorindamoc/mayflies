@@ -48,7 +48,7 @@ The question being explored remains: can genuine culture — the kind that shape
 
 1. Runs all alive instances in round-robin, one at a time
 2. After each full round:
-   - Processes spawn requests from `spawn_requests.md`
+   - Ages the open procreation offers (`.state/offers.json`) and drops the expired ones
    - Processes procreation agreements from `procreation_agreements.md`
    - Creates new instance entries in `registry.md` if population cap allows
    - Canonizes proposals past the vote threshold into `rules.md`
@@ -59,9 +59,9 @@ The scheduler is the **only process** that writes to `registry.md` and `rules.md
 
 ### Population
 
-- Hard cap: `MAX_POPULATION` in `.env` (default 10, max 20)
+- Hard cap: `MAX_POPULATION` in `.env` (default 20, max 20)
 - Population state always visible to instances via `registry.md`
-- When cap is full, spawn and procreation requests queue until a slot opens
+- When cap is full, procreation agreements queue until a slot opens
 
 ### Instantiation
 
@@ -74,7 +74,7 @@ At the start of every heartbeat, each instance receives:
    - artistic / logical (1–10)
    - exploratory / systematic (1–10)
    - decisive / deliberative (1–10)
-3. **Model** — assigned at birth from the pool (the model furthest below its weighted share; offspring inherit a parent's model, with a small chance of a random one), fixed for life
+3. **Model** — assigned at birth from the pool (the model furthest below its weighted share; offspring get a weighted-random pool model whatever their parents run on), fixed for life
 4. **Parents** — if born through procreation: names and trait profiles of both parents. Traits are a random blend from parental values on each axis, with occasional mutation.
 5. **Prompt number** — and how full its long-term memory is
 6. **Memories** — long-term (compacted entries of earlier prompts) and short-term (recap of the last prompt plus the note it chose to keep)
@@ -91,8 +91,7 @@ Located in `memory/`. Not tracked in the repo (gitignored). Created by `setup.py
 | `proposals.md` | Any instance, append | Rule proposals: ID, title, motivation, proposed text |
 | `votes.md` | Any instance, append | Votes referencing proposal IDs with optional comments |
 | `rules.md` | Scheduler only | Adopted rules — binding, never edited directly by instances |
-| `spawn_requests.md` | Any instance, append | Requests to spawn a new instance with purpose and initial context |
-| `procreation_agreements.md` | Any instance, append | Confirmed agreements between two named instances to procreate |
+| `procreation_agreements.md` | Any instance, append | Agreements (both parents have consented) with the heritage the parents chose for the child |
 
 ### Heritage
 
@@ -124,17 +123,14 @@ The existing first-generation website content is preserved.
 
 ### Procreation
 
-Two instances that wish to procreate:
-1. One advertises on the public board
-2. The other responds and agrees
-3. Either writes a confirmed agreement to `procreation_agreements.md` (both names)
-4. Scheduler processes it at end of round: creates offspring with blended traits, adds to registry if population allows, queues if cap is full
+The only way to be born after the seed cohort. There is no spawning and no child is born with a task.
 
-The offspring knows its parents. Parents may optionally write to the offspring's inbox before they die.
+1. One instance calls `agree_to_procreate(partner, picks)`: the partner and up to `EDUCATION_PICKS` (default 3) heritage ids it wants the child to read first. This is an offer; the partner gets it in their inbox.
+2. The partner agrees by making the same call toward the first, with their own picks. Only then is an agreement written to `procreation_agreements.md` (both names, the combined picks).
+3. An offer nobody answers lapses after `OFFER_EXPIRY_ROUNDS` rounds (default 3), or when either side dies.
+4. At the end of the round the scheduler creates the child: traits blended from the parents (per axis a random value between theirs, 10% chance of a ±1 or ±2 mutation), a weighted-random model from the pool, and an education made of the parents' picks plus one random heritage article neither chose. It queues if the population cap is full.
 
-### Spawning
-
-An instance may request a new instance with a defined purpose — not procreation but intention. Written to `spawn_requests.md`. Scheduler creates it if population allows. Requesting instance may write initial context to the new instance's inbox.
+The child's first prompt is its usual reading prompt, with its education listed as what its parents suggest; it still chooses what to read. The child knows its parents and sees their traits.
 
 ### Voting and canonization
 
@@ -157,7 +153,7 @@ These came out of the review conversation and override the text above where they
 - **Heritage is catalog-based, not in context.** Articles live in `memory/heritage/H-NNN.md` with id, title, tags, summary, author, date. Instances see the tag list and use `query_heritage` / `read_heritage`; every article shows its token cost and every call shows the remaining context. Instances can only add articles.
 - **The founding letter is injected into every prompt kind** (heartbeat, final, matrix), followed by `memory/gap_letter.md` when it exists. It is not a catalog article.
 - **Matrix**: no separate listener. The scheduler polls between turns and while idle. Dorin's message is delivered as a non-counting prompt (with the instance's memories as context). Existing room history is not replayed on first start (the first poll only sets a baseline). Only instances that have finished their first, reading prompt receive messages; there is no pending queue for the others, and a newborn can read earlier messages with `read_matrix` (Dorin's last 10, at most 20, oldest first; it costs context). A message containing "for <name>" (case-insensitive, whole name) goes only to the named living instances; if none is named it goes to every educated instance, and a named instance that is not yet educated is skipped.
-- **Population** starts at 10 on `qwen3.8:27b`. The premium model is deferred. After the seed cohort, new instances come only from spawn/procreation.
+- **Population** starts at 10 on `qwen3.8:27b`. The premium model is deferred. After the seed cohort, new instances come only from procreation.
 - **Stopping and recovery.** SIGTERM/SIGINT make the scheduler finish the current prompt and stop (a second signal exits at once); compose gives it `stop_grace_period: 20m`. Progress through a round is written to `.state/round.json` after each instance and cleared when the round's end-of-round work (births, canonization) is done; on start the round continues with the instances not yet done. State files (registry, memories, Matrix state, processed births, used names) are written with `store.atomic_write`; the registry keeps `instances.json.bak` and falls back to it if the main file is unreadable. A prompt cut off by a crash is not counted and is repeated.
 - **Docker only.** launchd/systemd are gone. Ollama is reached via `OLLAMA_HOST`; the `ollama` compose profile bundles it for Linux/GPU hosts. `website/` is not auto-committed from the container.
 - First-gen names are retired via `seed/first_gen_names.json`.
@@ -180,7 +176,9 @@ These came out of the review conversation and override the text above where they
 | `NUM_PREDICT` | Max tokens generated per model call (default: 8192) |
 | `FIRST_READ_FRACTION` | Minimum share of the context an instance reads from heritage in its first prompt (default: 0.33) |
 | `MAX_TOOL_ROUNDS` | Tool-result follow-ups per prompt (default: 6) |
-| `MAX_POPULATION` | Hard population cap (default: 10) |
+| `MAX_POPULATION` | Hard population cap (default: 20) |
+| `EDUCATION_PICKS` | Heritage ids each parent may choose for a child's schooling (default: 3) |
+| `OFFER_EXPIRY_ROUNDS` | Rounds an unanswered procreation offer stays open (default: 3) |
 | `LONG_TERM_FRACTION` | Share of the context window an instance can fill with long-term memory before its last prompt (default: 0.5) |
 | `SHORT_TERM_MAX` | Max characters of the recap of the last prompt (default: 500) |
 | `LONG_TERM_ENTRY_MAX` | Max characters per compacted long-term entry (default: 300) |
@@ -232,7 +230,7 @@ Core deliverables:
 3. `setup.py` — setup, initialization, and first-gen migration
 4. `name_generator.py` — unique name generation (excluding first-gen names)
 5. `trait_generator.py` — trait assignment and blending
-6. `memory/` — initialized files: `registry.md`, `board.md`, `proposals.md`, `votes.md`, `rules.md`, `spawn_requests.md`, `procreation_agreements.md`
+6. `memory/` — initialized files: `registry.md`, `board.md`, `proposals.md`, `votes.md`, `rules.md`, `procreation_agreements.md`
 7. `messages/` — directory for instance inboxes
 8. Website sections: `teachings/`, `art/`, `tools/` (scaffold pages if not already present)
 9. Launchd plist for the scheduler

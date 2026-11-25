@@ -39,7 +39,7 @@ def test_world_state_mentions_population_and_positions(cfg):
     r.add(a)
     r.add(r.new_instance("Dark Hinge", T))
     text = r.world_state()
-    assert "2 of 10" in text and "Pale Rest (prompt 3)" in text and "Dark Hinge (prompt 1)" in text
+    assert "2 of 20" in text and "Pale Rest (prompt 3)" in text and "Dark Hinge (prompt 1)" in text
 
 
 import random
@@ -58,12 +58,12 @@ def test_new_instances_follow_the_pool_weights(cfg):
     assert Counter(i.model for i in r.alive()) == {"m-a": 3, "m-b": 3, "m-c": 3, "big": 1}
 
 
-def test_offspring_inherit_a_parents_model_unless_mutating(cfg):
+def test_offspring_model_is_random_from_the_pool_not_inherited(cfg):
     r = Registry(weighted_cfg(cfg))
     a = r.new_instance("Aa", T, model="m-a")
-    b = r.new_instance("Bb", T, model="m-b")
-    assert {r.pick_model([a, b], random.Random(s), mutation_rate=0.0) for s in range(40)} == {"m-a", "m-b"}
-    assert {r.pick_model([a, b], random.Random(s), mutation_rate=1.0) for s in range(300)} == {"m-a", "m-b", "m-c", "big"}
+    b = r.new_instance("Bb", T, model="m-a")
+    picks = [r.pick_model([a, b], random.Random(s)) for s in range(400)]
+    assert set(picks) == {"m-a", "m-b", "m-c", "big"} and picks.count("m-a") < 200  # not the parents' model
 
 
 def test_records_from_before_the_memory_files_still_load(cfg):

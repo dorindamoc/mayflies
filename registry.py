@@ -21,6 +21,7 @@ class Instance:
     alive: bool = True
     died: str = ""
     born_at: str = ""
+    education: list = field(default_factory=list)  # heritage ids the parents chose for its schooling
 
 
 class Registry:
@@ -43,17 +44,14 @@ class Registry:
                 raise
             return json.loads(backup.read_text())
 
-    def pick_model(self, parents=(), rng=None, mutation_rate: float = 0.15) -> str:
-        """Offspring inherit a parent's model (small chance of a weighted-random one); everyone else gets
+    def pick_model(self, parents=(), rng=None) -> str:
+        """Offspring get a weighted-random pool model, whatever their parents run on; everyone else gets
         the pool model furthest below its weighted share of the living population."""
         rng = rng or random
         pool = self.cfg.models
         weights = [self.cfg.model_weights.get(m, 1) for m in pool]
-        parents = [p for p in parents if p is not None and p.model]
-        if parents:
-            if rng.random() < mutation_rate:
-                return rng.choices(pool, weights=weights)[0]
-            return rng.choice(parents).model
+        if any(p is not None for p in parents):
+            return rng.choices(pool, weights=weights)[0]
         alive = self.alive()
         total = sum(weights)
         deficit = {m: w / total * (len(alive) + 1) - sum(1 for i in alive if i.model == m)

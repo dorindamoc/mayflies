@@ -8,7 +8,7 @@ def test_defaults(tmp_path):
     assert cfg.short_term_max == 500 and cfg.long_term_fraction == 0.5 and cfg.long_term_entry_max == 300
     assert cfg.long_term_tokens == 16384
     assert not hasattr(cfg, "lifespan_prompts")
-    assert cfg.max_population == 10
+    assert cfg.max_population == 20
     assert cfg.initial_population == 10
     assert cfg.vote_threshold == 3
     assert cfg.memory_fragment_max == 1000
@@ -74,3 +74,10 @@ def test_first_read_allowance_is_a_third_of_the_context_by_default(tmp_path):
 
 def test_num_predict_can_be_set_from_env(tmp_path):
     assert Config.from_env(home=tmp_path, env={"NUM_PREDICT": "4096"}).num_predict == 4096
+
+
+def test_procreation_settings(tmp_path):
+    cfg = Config.from_env(home=tmp_path, env={})
+    assert cfg.education_picks == 3 and cfg.offer_expiry_rounds == 3
+    cfg = Config.from_env(home=tmp_path, env={"EDUCATION_PICKS": "5", "OFFER_EXPIRY_ROUNDS": "2"})
+    assert cfg.education_picks == 5 and cfg.offer_expiry_rounds == 2

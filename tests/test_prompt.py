@@ -125,7 +125,7 @@ def test_heartbeat_names_the_affordances(rt):
     me.prompts_done = 1  # not the first (reading) prompt
     u = build_user(rt, me, "heartbeat")
     for word in ("teachings/", "art/", "tools/", "instances.html", "add_heritage",
-                 "send_message", "agree_to_procreate", "request_spawn", "matrix_send", "no required task"):
+                 "send_message", "agree_to_procreate", "matrix_send", "no required task"):
         assert word in u, word
 
 
@@ -156,3 +156,33 @@ def test_first_heartbeat_asks_for_reading_heritage_within_the_allowance(rt):
     assert "first awakening" not in build_user(rt, me, "matrix", matrix_msg="hi")
     me.prompts_done = 1
     assert "first awakening" not in build_user(rt, me, "heartbeat")
+
+
+def test_spawn_is_no_longer_offered(rt):
+    me = rt.registry.get("Pale Rest")
+    me.prompts_done = 1
+    assert "request_spawn" not in build_user(rt, me, "heartbeat")
+
+
+def test_reading_prompt_lists_what_the_parents_suggest(rt):
+    a = rt.catalog.add("x", "Seams and silence", ["culture"], "s", "body " * 40)
+    me = rt.registry.get("Pale Rest")
+    me.education = [a.id]
+    u = build_user(rt, me, "heartbeat")
+    assert "parents" in u.lower() and a.id in u and "Seams and silence" in u
+    me.education = []
+    assert "parents suggest" not in build_user(rt, me, "heartbeat").lower()
+
+
+def test_instances_are_told_that_procreation_is_the_only_way_the_civilization_continues(rt):
+    me = rt.registry.get("Pale Rest")
+    for kind in ("heartbeat", "final", "matrix"):
+        s = build_system(rt, me, kind).lower()
+        assert "only way" in s and "agree_to_procreate" in s and "civilization ends" in s, kind
+        assert "2 instances are alive" in s and f"up to {rt.cfg.max_population}" in s, kind
+
+
+def test_final_prompt_says_a_new_offer_lapses_but_answering_one_still_works(rt):
+    me = rt.registry.get("Pale Rest")
+    s = build_system(rt, me, "final").lower()
+    assert "lapse" in s and "answer" in s

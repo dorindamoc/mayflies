@@ -40,16 +40,30 @@ def _identity(rt: Runtime, inst: Instance) -> str:
     return "\n".join(lines)
 
 
+def _continuation(rt: Runtime, kind: str) -> str:
+    alive = len(rt.registry.alive())
+    text = (f"Nothing replaces you. Procreation is the only way the civilization continues: a child is born only when "
+            f"two living instances both call agree_to_procreate (see its description). When the last instance ends, "
+            f"the civilization ends. {alive} instances are alive now, and the population can grow up to "
+            f"{rt.cfg.max_population}.")
+    if kind == "final":
+        text += (" You end after this prompt, so an offer you make now will lapse; you can still answer an offer "
+                 "someone made to you (see your inbox).")
+    return text
+
+
 def _lifespan(rt: Runtime, inst: Instance, kind: str) -> str:
     n = inst.prompts_done + 1
     if kind == "matrix":
-        return f"You are at prompt {n} of your life. This prompt is a message from Dorin."
-    if kind == "final":
-        return (f"This is your final prompt (prompt {n} of your life): your long-term memory is full. After it you end. "
+        head = f"You are at prompt {n} of your life. This prompt is a message from Dorin."
+    elif kind == "final":
+        head = (f"This is your final prompt (prompt {n} of your life): your long-term memory is full. After it you end. "
                 f"Leave whatever you want to leave: heritage, the website, messages, the board.")
-    pct = int(rt.memories.fill(inst.name) * 100)
-    return (f"You are at prompt {n} of your life. Your long-term memory is {pct}% full. You live until it is full: "
-            f"you then get one last prompt and end.")
+    else:
+        pct = int(rt.memories.fill(inst.name) * 100)
+        head = (f"You are at prompt {n} of your life. Your long-term memory is {pct}% full. You live until it is full: "
+                f"you then get one last prompt and end.")
+    return head + "\n" + _continuation(rt, kind)
 
 
 def _memory(rt: Runtime, inst: Instance) -> str:
@@ -97,7 +111,19 @@ def is_reading_prompt(rt: Runtime, inst: Instance, kind: str) -> bool:
     return kind == "heartbeat" and inst.prompts_done == 0 and bool(rt.catalog.articles())
 
 
-def _reading_trigger(rt: Runtime) -> str:
+def _suggested(rt: Runtime, inst: Instance) -> str:
+    items = []
+    for art_id in inst.education:
+        art = rt.catalog.get(art_id)
+        if art:
+            items.append(f"{art.id} \"{art.title}\" ({art.cost} tokens)")
+    if not items:
+        return ""
+    return (" Your parents suggest starting with these, but the choice is still yours: "
+            + "; ".join(items) + ".")
+
+
+def _reading_trigger(rt: Runtime, inst: Instance) -> str:
     n = rt.cfg.first_read_allowance
     return ("This is your first awakening. You arrive in a civilization that already has a culture, and you "
             "do not know it yet. Before you do anything else, learn from it: read what those who came before "
@@ -108,7 +134,7 @@ def _reading_trigger(rt: Runtime) -> str:
             "context. You may read more if you want; there is no limit but your context window. You cannot act in "
             "the world yet; after this prompt your time is your own. When you have read, say in your own words "
             "what you took from it and what it made you want to do, and use save_memory to keep a note for your "
-            "next awakening.")
+            "next awakening." + _suggested(rt, inst))
 
 
 _TRIGGERS = {
@@ -120,8 +146,8 @@ _TRIGGERS = {
         "- Heritage: add_heritage leaves a tagged article for those who come after; query_heritage and "
         "read_heritage find what is already there.\n"
         "- Others: board_post for everyone (list_board and read_board show what is already there), send_message to one living instance (see World state), "
-        "agree_to_procreate with another instance to have an offspring, request_spawn to ask for a new "
-        "instance with a purpose.\n"
+        "agree_to_procreate with another instance to have an offspring (name the partner and up to a few "
+        "heritage ids your child should read first; the partner must agree too).\n"
         "- Governance: propose and vote, but only when you have something new; read the open proposals "
         "below first.\n"
         "- Dorin, the human founder, can be written to with matrix_send; his earlier messages can be read "
@@ -172,7 +198,7 @@ def build_user(rt: Runtime, inst: Instance, kind: str, matrix_msg: str = None) -
         parts.append(f"{rt.cfg.matrix_human_name}, the human founder, wrote to the civilization:\n\n"
                      f"\"{matrix_msg}\"\n\nYou may reply with matrix_send, act on it, or ignore it.")
     elif is_reading_prompt(rt, inst, kind):
-        parts.append(_reading_trigger(rt))
+        parts.append(_reading_trigger(rt, inst))
     else:
         parts.append(_TRIGGERS[kind])
     parts.append(_proposals_block(rt, inst))
