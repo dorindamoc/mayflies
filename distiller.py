@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from config import Config
+import re
 
-SYSTEM = ("You compress the memory of a short-lived mind. You are given its previous recollection, "
-          "its own saved note, and what it just did. Write one compact first-person recollection that "
-          "the same mind will read when it wakes next: who it is in this world, what it was doing, what "
-          "mattered to it, what it left unfinished. Keep what is important, drop what is not. "
-          "Output only the recollection, no preamble, at most {limit} characters.")
+from config import Config
+from llm import LLMError
+
+SYSTEM = ("You compress what a short-lived mind just did into a recap it will read when it wakes next. You are "
+          "given its actions, with the substance of what it made (the idea of a poem, what it told someone, what "
+          "it posted) and an excerpt of what it read, and its final words. Write one compact first-person recap: "
+          "what it made and its main idea, what it read, what it took from that, and what it left unfinished. "
+          "Keep what is important, drop what is not. "
+          "Output only the recap, no preamble, at most {limit} characters.")
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -16,19 +20,53 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     cut = text[:limit]
+    ends = [m.end() for m in re.finditer(r"[.!?](?=\s|$)", cut)]
+    if ends and ends[-1] >= limit // 2:  # prefer ending on a sentence over ending mid-thought
+        return cut[:ends[-1]].strip()
     return cut.rsplit(" ", 1)[0] if " " in cut else cut
 
 
 def distill(llm, cfg: Config, inst, kind: str, final_text: str, actions: list) -> str:
+    """Recap one prompt for the short-term memory."""
     acts = "\n".join(f"- {a}" for a in actions) or "(none)"
-    user = (f"Previous recollection: {inst.distilled or '(none)'}\n"
-            f"Own saved note: {inst.fragment or '(none)'}\n"
-            f"Prompt kind: {kind}\n"
-            f"Actions taken this prompt:\n{acts}\n"
+    user = (f"Prompt kind: {kind}\n"
+            f"Actions taken this prompt (what it made, what it read):\n{acts}\n"
             f"Final words this prompt:\n{final_text or '(none)'}")
-    reply = llm.chat([{"role": "system", "content": SYSTEM.format(limit=cfg.distilled_max)},
+    reply = llm.chat([{"role": "system", "content": SYSTEM.format(limit=cfg.short_term_max)},
                       {"role": "user", "content": user}], tools=None, think=False, model=inst.model)
-    return _truncate(reply.content, cfg.distilled_max)
+    return _truncate(reply.content, cfg.short_term_max)
+
+
+FOLD_SYSTEM = ("You compress the memory of a short-lived mind for its long-term memory. You are given what it "
+               "remembered of one earlier prompt, including a note it chose to keep. Write one very compact "
+               "first-person entry that keeps only what will still matter much later. "
+               "Output only the entry, no preamble, at most {words} words.")
+
+
+FOLD_TRIES = 3
+
+
+def fold(llm, cfg: Config, inst, short_text: str) -> str:
+    """Compact a short-term memory into one long-term entry. Never fails: on an error it cuts the text instead.
+
+    Models count words far better than characters, so the target is in words, and an over-long entry is
+    asked for again with its real length. What is still too long is cut at a sentence end."""
+    limit = cfg.long_term_entry_max
+    words = max(1, int(limit * 0.8 / CHARS_PER_WORD))
+    messages = [{"role": "system", "content": FOLD_SYSTEM.format(words=words)},
+                {"role": "user", "content": short_text}]
+    entry = ""
+    try:
+        for attempt in range(FOLD_TRIES):
+            entry = llm.chat(messages, tools=None, think=False, model=inst.model).content.strip()
+            if len(entry) <= limit or attempt == FOLD_TRIES - 1:
+                break
+            messages += [{"role": "assistant", "content": entry},
+                         {"role": "user", "content": f"That is {len(entry)} characters and the limit is "
+                                                     f"{limit}. Shorten it to at most {words} words."}]
+    except LLMError:
+        pass
+    return _truncate(entry, limit) or _truncate(short_text, limit)
 
 
 COMPACT_SYSTEM = ("You shorten a note that a short-lived mind wrote to itself, because it is over the length limit. "

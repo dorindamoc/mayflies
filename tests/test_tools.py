@@ -1,3 +1,4 @@
+import base64
 import pytest
 from tests.fakes import FakeLLM
 from budget import ContextBudget
@@ -91,13 +92,44 @@ def test_propose_and_vote_rules(ctx):
     assert line.count("|") == 3 and "Dark Hinge" in line
 
 
-def test_spawn_and_procreation_requests(ctx):
-    assert dispatch(ctx, "request_spawn", {"purpose": "Archivist", "context": "tidy"}).startswith("Requested")
-    assert "Archivist" in ctx.store.spawn_path.read_text()
+def test_request_spawn_is_gone(ctx):
+    assert "request_spawn" not in {s["function"]["name"] for s in tool_specs()}
+    assert dispatch(ctx, "request_spawn", {"purpose": "x"}).startswith("Error")
+
+
+def test_procreation_needs_a_valid_partner_and_valid_picks(ctx):
+    h = ctx.catalog.add("a", "T", ["culture"], "s", "b").id
     assert dispatch(ctx, "agree_to_procreate", {"partner": "Pale Rest"}).startswith("Error")
     assert dispatch(ctx, "agree_to_procreate", {"partner": "Ghost Name"}).startswith("Error")
-    assert dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge"}).startswith("Recorded")
-    assert "Parents: Pale Rest | Dark Hinge" in ctx.store.procreation_path.read_text()
+    assert dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge", "picks": ["H-999"]}).startswith("Error")
+    many = [h] + [ctx.catalog.add("a", f"T{i}", ["culture"], "s", "b").id for i in range(ctx.cfg.education_picks)]
+    assert "at most" in dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge", "picks": many})
+    ctx.registry.kill("Dark Hinge", "chosen")
+    assert dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge"}).startswith("Error")
+    assert not ctx.store.procreation_path.exists() or not ctx.store.procreation_path.read_text().strip()
+
+
+def test_procreation_is_an_offer_until_the_partner_agrees_too(ctx):
+    h1 = ctx.catalog.add("a", "One", ["culture"], "s", "b").id
+    h2 = ctx.catalog.add("a", "Two", ["culture"], "s", "b").id
+    out = dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge", "picks": [h1]})
+    assert out.startswith("Offered") and ctx.store.offers()[0]["to"] == "Dark Hinge"
+    note = ctx.store.inbox_peek("Dark Hinge")[0]
+    assert "Pale Rest" in note and "agree_to_procreate" in note and h1 in note
+    assert not ctx.store.procreation_path.exists() or not ctx.store.procreation_path.read_text().strip()
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    out = dispatch(ctx, "agree_to_procreate", {"partner": "Pale Rest", "picks": f"{h2}, {h1}"})
+    assert out.startswith("Agreed") and ctx.store.offers() == []
+    text = ctx.store.procreation_path.read_text()
+    assert "Parents: Pale Rest | Dark Hinge" in text and f"Education: {h1}, {h2}" in text
+
+
+def test_making_the_same_offer_again_replaces_it(ctx):
+    h = ctx.catalog.add("a", "One", ["culture"], "s", "b").id
+    dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge"})
+    dispatch(ctx, "agree_to_procreate", {"partner": "Dark Hinge", "picks": [h]})
+    assert len(ctx.store.offers()) == 1 and ctx.store.offers()[0]["picks"] == [h]
+
 
 
 def test_website_tools_and_path_safety(ctx):
@@ -460,3 +492,232 @@ def test_a_vote_is_written_under_an_exclusive_lock_on_votes_md(ctx, monkeypatch)
     assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1}).startswith("Vote")
     assert (str(ctx.store.votes_path), fcntl.LOCK_EX) in locked
     assert ctx.store.votes_path.read_text().count("\n") == 1  # still one plain line per vote
+
+
+# ---- read_matrix: Dorin's earlier messages, for instances that were not there to receive them ----
+
+class MatrixStub:
+    def __init__(self, messages=None, error=None):
+        self.messages, self.error = messages or [], error
+
+    def fetch_human_messages(self, limit=20):
+        if self.error:
+            raise self.error
+        return self.messages[-limit:]
+
+    def send(self, m):
+        return "$e"
+
+
+def _msgs(n):
+    return [{"event_id": f"${i}", "body": f"message number {i}", "ts": 1795443317226 + i * 60000}
+            for i in range(1, n + 1)]
+
+
+def test_read_matrix_is_offered_and_needs_no_arguments(ctx):
+    spec = next(s["function"] for s in tool_specs(ctx.cfg) if s["function"]["name"] == "read_matrix")
+    assert not spec["parameters"]["required"]
+
+
+def test_read_matrix_returns_the_latest_messages_oldest_first_with_utc_times(ctx):
+    ctx.matrix = MatrixStub(_msgs(15))
+    out = dispatch(ctx, "read_matrix", {"limit": 3})
+    assert out.index("message number 13") < out.index("message number 14") < out.index("message number 15")
+    assert "message number 12" not in out and "2026-11-23" in out and "UTC" in out
+
+
+def test_read_matrix_defaults_to_ten_and_caps_at_twenty(ctx):
+    ctx.matrix = MatrixStub(_msgs(30))
+    assert dispatch(ctx, "read_matrix", {}).count("message number") == 10
+    assert dispatch(ctx, "read_matrix", {"limit": 500}).count("message number") == 20
+    assert dispatch(ctx, "read_matrix", {"limit": "nonsense"}).count("message number") == 10
+
+
+def test_read_matrix_says_so_when_matrix_is_off_or_empty_or_failing(ctx):
+    assert "not configured" in dispatch(ctx, "read_matrix", {})
+    ctx.matrix = MatrixStub([])
+    assert "no messages" in dispatch(ctx, "read_matrix", {}).lower()
+    ctx.matrix = MatrixStub(error=RuntimeError("homeserver down"))
+    out = dispatch(ctx, "read_matrix", {})
+    assert out.startswith("Error") and "homeserver down" in out
+
+
+def test_read_matrix_costs_context_like_any_other_reading(ctx):
+    ctx.matrix = MatrixStub(_msgs(5))
+    before = ctx.budget.remaining
+    dispatch(ctx, "read_matrix", {})
+    assert ctx.budget.remaining < before
+
+
+def test_made_things_are_recorded_with_their_substance_cut_to_600_characters(ctx):
+    dispatch(ctx, "write_website", {"path": "art/pond.md", "content": "The pond keeps nothing. " + "ripple " * 200})
+    dispatch(ctx, "board_post", {"text": "What would you change in the archive?"})
+    poem, post = ctx.outcome.details
+    assert poem.startswith("write_website") and "art/pond.md" in poem and "The pond keeps nothing." in poem
+    assert len(poem.split("\n", 1)[1].strip()) <= 600 and "ripple" in poem
+    assert "What would you change in the archive?" in post
+
+
+def test_a_long_title_does_not_push_the_path_out_of_the_record(ctx):
+    dispatch(ctx, "write_website", {"content": "c" * 5000, "path": "art/pond.md"})
+    assert "art/pond.md" in ctx.outcome.details[0]
+
+
+def test_what_was_read_is_recorded_as_an_excerpt_per_item(ctx):
+    a = ctx.catalog.add("a", "On Mud", ["mud"], "About mud", "mud is old " * 200)
+    b = ctx.catalog.add("b", "On Rain", ["rain"], "About rain", "rain is new " * 200)
+    dispatch(ctx, "read_heritage", {"ids": [a.id, b.id]})
+    detail = ctx.outcome.details[0]
+    assert detail.startswith("read_heritage") and "mud is old" in detail and "rain is new" in detail
+    assert all(len(line.strip()) <= 300 for line in detail.split("\n")[1:])
+
+
+def test_listings_and_votes_have_no_extra_detail(ctx):
+    dispatch(ctx, "list_board", {})
+    assert ctx.outcome.details == ["list_board: {}"]
+
+
+def test_a_failed_call_records_the_error(ctx):
+    dispatch(ctx, "read_website", {"path": "missing.md"})
+    assert "Error" in ctx.outcome.details[0]
+
+
+def test_the_short_action_list_is_unchanged(ctx):
+    dispatch(ctx, "board_post", {"text": "hello"})
+    assert ctx.outcome.actions == ['board_post: {"text": "hello"}']
+
+
+SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="teal"/></svg>'
+
+
+def test_canvas_returns_text_and_attaches_the_picture(ctx):
+    pytest.importorskip("resvg_py")
+    before = ctx.budget.remaining
+    out = dispatch(ctx, "canvas", {"svg": SVG})
+    assert out.startswith("Rendered") and "512x512" in out
+    assert len(ctx.images) == 1 and base64.b64decode(ctx.images[0])[:4] == b"\x89PNG"
+    assert before - ctx.budget.remaining >= 258
+    assert not any(ctx.cfg.website_dir.rglob("*.svg"))
+
+
+def test_canvas_save_as_keeps_the_svg_on_the_website_under_the_authors_name(ctx):
+    pytest.importorskip("resvg_py")
+    out = dispatch(ctx, "canvas", {"svg": SVG, "save_as": "art/moon.svg"})
+    assert "Saved" in out and (ctx.cfg.website_dir / "art" / "moon.svg").read_text() == SVG
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    assert "already exists" in dispatch(ctx, "canvas", {"svg": SVG, "save_as": "art/moon.svg"})
+
+
+def test_canvas_refuses_a_save_path_that_is_not_svg(ctx):
+    pytest.importorskip("resvg_py")
+    assert dispatch(ctx, "canvas", {"svg": SVG, "save_as": "art/moon.html"}).startswith("Error")
+    assert ctx.images == []
+
+
+def test_canvas_reports_bad_svg_and_attaches_nothing(ctx):
+    pytest.importorskip("resvg_py")
+    assert "never closed" in dispatch(ctx, "canvas", {"svg": "<svg><oops"})
+    assert dispatch(ctx, "canvas", {"svg": '<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>'}).startswith("Error")
+    assert ctx.images == []
+
+
+def test_canvas_is_limited_per_prompt(ctx):
+    pytest.importorskip("resvg_py")
+    for _ in range(ctx.cfg.canvas_max_per_prompt):
+        assert dispatch(ctx, "canvas", {"svg": SVG}).startswith("Rendered")
+    assert "limit" in dispatch(ctx, "canvas", {"svg": SVG}).lower()
+    assert len(ctx.images) == ctx.cfg.canvas_max_per_prompt
+
+
+def test_canvas_refuses_when_the_picture_does_not_fit_the_remaining_context(ctx):
+    pytest.importorskip("resvg_py")
+    ctx.budget.used = ctx.budget.total - ctx.budget.reserve - 100
+    out = dispatch(ctx, "canvas", {"svg": SVG})
+    assert "Not enough context" in out and ctx.images == []
+
+
+def test_look_website_shows_a_saved_drawing_and_refuses_other_files(ctx):
+    pytest.importorskip("resvg_py")
+    dispatch(ctx, "canvas", {"svg": SVG, "save_as": "art/moon.svg"})
+    ctx.images.clear()
+    assert dispatch(ctx, "look_website", {"path": "art/moon.svg"}).startswith("Rendered") and len(ctx.images) == 1
+    dispatch(ctx, "write_website", {"path": "a.html", "content": "<p>x</p>"})
+    assert dispatch(ctx, "look_website", {"path": "a.html"}).startswith("Error")
+    assert dispatch(ctx, "look_website", {"path": "art/none.svg"}).startswith("Error")
+
+
+def test_write_website_accepts_svg_files(ctx):
+    assert dispatch(ctx, "write_website", {"path": "art/x.svg", "content": SVG}).startswith("Wrote")
+
+
+def test_canvas_tools_are_offered():
+    names = {s["function"]["name"] for s in tool_specs()}
+    assert {"canvas", "look_website"} <= names
+
+
+@pytest.mark.parametrize("path,content", [
+    ("a.html", "<p>hi</p><script>alert(1)</script>"),
+    ("a.html", "<button onclick='x()'>b</button>"),
+    ("a.md", "# Title\n\n<script>alert(1)</script>"),
+    ("a.txt", "<script>alert(1)</script>"),
+    ("a.css", "<script>alert(1)</script>"),
+    ("art/a.svg", '<svg xmlns="http://www.w3.org/2000/svg"><script>x</script></svg>'),
+    ("art/a.svg", '<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///etc/hosts"/></svg>'),
+    ("art/a.svg", '<svg xmlns="http://www.w3.org/2000/svg" onload="x()"></svg>'),
+])
+def test_write_website_refuses_active_content_whatever_the_extension(ctx, path, content):
+    out = dispatch(ctx, "write_website", {"path": path, "content": content})
+    assert out.startswith("Error") and not (ctx.cfg.website_dir / path).exists()
+
+
+def test_write_website_still_takes_ordinary_html_and_svg(ctx):
+    assert dispatch(ctx, "write_website", {"path": "a.html", "content": "<p>An onboarding.</p>"}).startswith("Wrote")
+    assert dispatch(ctx, "write_website", {"path": "art/a.svg", "content": SVG}).startswith("Wrote")
+
+
+def test_canvas_save_as_is_checked_too(ctx):
+    out = dispatch(ctx, "canvas", {"svg": '<svg xmlns="http://www.w3.org/2000/svg" onload="x()"/>', "save_as": "art/x.svg"})
+    assert out.startswith("Error") and not (ctx.cfg.website_dir / "art" / "x.svg").exists()
+
+
+def test_propose_civilization_name_files_a_proposal_with_the_name(ctx):
+    pid = dispatch(ctx, "propose_civilization_name", {"name": "the Forest", "reason": "we live among trees"}).split()[-1]
+    text = ctx.store.proposals_path.read_text()
+    assert f"### {pid} — Name the civilization: the Forest" in text
+    assert "Names the civilization: the Forest" in text and "we live among trees" in text
+    assert "Proposed text:\nThis civilization is named the Forest." in text
+
+
+def test_propose_civilization_name_refuses_bad_names_and_repeats(ctx):
+    assert dispatch(ctx, "propose_civilization_name", {"name": "<b>x</b>"}).startswith("Error")
+    dispatch(ctx, "propose_civilization_name", {"name": "the Forest"})
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    assert "already" in dispatch(ctx, "propose_civilization_name", {"name": "The forest"})
+
+
+def test_a_named_proposal_can_be_voted_like_any_other(ctx):
+    pid = dispatch(ctx, "propose_civilization_name", {"name": "the Forest"}).split()[-1]
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1}).startswith("Vote")
+
+
+def test_new_heritage_is_stamped_with_the_authors_civilization(ctx):
+    ctx.instance.civ = 2
+    dispatch(ctx, "add_heritage", {"title": "T", "tags": ["x"], "body": "b"})
+    assert ctx.catalog.get("H-001").civ == 2
+
+
+def test_heritage_listings_name_the_civilization_and_put_the_current_one_first(ctx):
+    from civs import Civilizations
+    civs = Civilizations(ctx.cfg)
+    civs.start(["Pale Rest"])
+    civs.close(1, "extinct")
+    civs.start(["Dark Hinge"])
+    civs.set_name(2, "the Forest")
+    ctx.instance.civ = 2
+    ctx.catalog.add("a", "seed", ["x"], "s", "b")
+    ctx.catalog.add("a", "ancient", ["x"], "s", "b", civ=1)
+    ctx.catalog.add("a", "recent", ["x"], "s", "b", civ=2)
+    out = dispatch(ctx, "query_heritage", {"tags": ["x"]})
+    assert out.index("recent") < out.index("ancient") < out.index("seed")
+    assert "[the Forest]" in out and "[Unnamed_1]" in out and "[founding heritage]" in out

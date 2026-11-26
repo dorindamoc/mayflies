@@ -3,11 +3,38 @@
 from __future__ import annotations
 
 import fcntl
+import json
+import os
 import re
+import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 from config import Config
+
+
+def atomic_write(path: Path, text: str, backup: bool = False) -> None:
+    """Write a file so a crash or power cut leaves either the old content or the new, never half of it.
+
+    With backup=True the previous version is kept next to it as <name>.bak."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        if backup and path.exists():
+            shutil.copy2(path, path.with_name(path.name + ".bak"))
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def now_utc() -> datetime:
@@ -68,9 +95,23 @@ class Store:
         self.board_path = m / "board.md"
         self.proposals_path = m / "proposals.md"
         self.votes_path = m / "votes.md"
-        self.spawn_path = m / "spawn_requests.md"
         self.procreation_path = m / "procreation_agreements.md"
         self.rules_path = m / "rules.md"
+
+    # --- procreation offers (one parent has proposed, the other has not yet agreed) ---
+    @property
+    def offers_path(self):
+        return self.cfg.state_dir / "offers.json"
+
+    def offers(self) -> list:
+        try:
+            return json.loads(self.offers_path.read_text())
+        except (OSError, ValueError):
+            return []
+
+    def save_offers(self, offers: list) -> None:
+        self.cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        atomic_write(self.offers_path, json.dumps(offers))
 
     # --- board ---
     def board_post(self, author: str, text: str) -> None:

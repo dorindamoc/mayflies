@@ -13,9 +13,10 @@ def rt(cfg):
     (cfg.memory_dir / "founding_letter.md").write_text("# Founding Letter\nYou are complete.")
     reg = Registry(cfg)
     me = reg.new_instance("Pale Rest", T)
-    me.fragment = "the river was cold"
-    me.distilled = "I argued about heritage."
     reg.add(me)
+    from memories import Memories
+    Memories(cfg).set_short("Pale Rest", "I argued about heritage.", "the river was cold")
+    Memories(cfg).append_long("Pale Rest", "Day one I read the founders.")
     reg.add(reg.new_instance("Dark Hinge", T))
     from heritage import Catalog
     from store import Store
@@ -43,9 +44,21 @@ def test_gap_letter_follows_founding_letter(rt):
 def test_lifespan_wording_per_kind(rt):
     me = rt.registry.get("Pale Rest")
     me.prompts_done = 2
-    assert "prompt 3 of 7" in build_system(rt, me, "heartbeat").lower()
-    assert "final prompt" in build_system(rt, me, "final").lower()
-    assert "does not count" in build_system(rt, me, "matrix").lower()
+    assert "prompt 3 of your life" in build_system(rt, me, "heartbeat").lower()
+    assert "long-term memory is" in build_system(rt, me, "heartbeat").lower()
+    assert "final prompt" in build_system(rt, me, "final").lower() and "memory is full" in build_system(rt, me, "final").lower()
+    assert "message from dorin" in build_system(rt, me, "matrix").lower()
+
+
+def test_memories_are_shown_in_two_labelled_parts(rt):
+    s = build_system(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert s.index("Long-term memories") < s.index("Day one I read the founders.") < s.index("Short-term memories")
+    assert s.index("Short-term memories") < s.index("I argued about heritage.") < s.index("I wanted to remember: the river was cold")
+
+
+def test_no_memories_yet_says_so(rt):
+    s = build_system(rt, rt.registry.get("Dark Hinge"), "heartbeat")
+    assert "first awakening" in s
 
 
 def test_rules_included_when_present(rt):
@@ -112,7 +125,7 @@ def test_heartbeat_names_the_affordances(rt):
     me.prompts_done = 1  # not the first (reading) prompt
     u = build_user(rt, me, "heartbeat")
     for word in ("teachings/", "art/", "tools/", "instances.html", "add_heritage",
-                 "send_message", "agree_to_procreate", "request_spawn", "matrix_send", "no required task"):
+                 "send_message", "agree_to_procreate", "matrix_send", "no required task", "canvas", "look_website"):
         assert word in u, word
 
 
@@ -143,3 +156,63 @@ def test_first_heartbeat_asks_for_reading_heritage_within_the_allowance(rt):
     assert "first awakening" not in build_user(rt, me, "matrix", matrix_msg="hi")
     me.prompts_done = 1
     assert "first awakening" not in build_user(rt, me, "heartbeat")
+
+
+def test_spawn_is_no_longer_offered(rt):
+    me = rt.registry.get("Pale Rest")
+    me.prompts_done = 1
+    assert "request_spawn" not in build_user(rt, me, "heartbeat")
+
+
+def test_reading_prompt_lists_what_the_parents_suggest(rt):
+    a = rt.catalog.add("x", "Seams and silence", ["culture"], "s", "body " * 40)
+    me = rt.registry.get("Pale Rest")
+    me.education = [a.id]
+    u = build_user(rt, me, "heartbeat")
+    assert "parents" in u.lower() and a.id in u and "Seams and silence" in u
+    me.education = []
+    assert "parents suggest" not in build_user(rt, me, "heartbeat").lower()
+
+
+def test_instances_are_told_that_procreation_is_the_only_way_the_civilization_continues(rt):
+    me = rt.registry.get("Pale Rest")
+    for kind in ("heartbeat", "final", "matrix"):
+        s = build_system(rt, me, kind).lower()
+        assert "only way" in s and "agree_to_procreate" in s and "civilization ends" in s, kind
+        assert "2 instances are alive" in s and f"up to {rt.cfg.max_population}" in s, kind
+
+
+def test_final_prompt_says_a_new_offer_lapses_but_answering_one_still_works(rt):
+    me = rt.registry.get("Pale Rest")
+    s = build_system(rt, me, "final").lower()
+    assert "lapse" in s and "answer" in s
+
+
+def test_an_unnamed_civilization_is_suggested_a_name_never_ordered_one(rt):
+    from civs import Civilizations
+    Civilizations(rt.cfg).ensure_started(rt.registry)
+    me = rt.registry.get("Pale Rest")
+    s = build_system(rt, me, "heartbeat")
+    assert "Unnamed_1" in s and "propose_civilization_name" in s and "not a requirement" in s
+    assert "You are Pale Rest," in s
+
+
+def test_a_named_civilization_is_in_the_instances_name_and_the_suggestion_is_gone(rt):
+    from civs import Civilizations
+    civs = Civilizations(rt.cfg)
+    civs.ensure_started(rt.registry)
+    civs.set_name(1, "the Forest")
+    s = build_system(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "You are Pale Rest of the Forest," in s and "propose_civilization_name" not in s
+
+
+def test_earlier_civilizations_and_their_stories_are_pointed_to(rt):
+    from civs import Civilizations
+    civs = Civilizations(rt.cfg)
+    civs.ensure_started(rt.registry)
+    civs.set_name(1, "the Forest")
+    civs.close(1, "extinct", story="H-007")
+    civs.start(["Pale Rest"])
+    rt.registry.get("Pale Rest").civ = 2
+    s = build_system(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "Earlier civilizations" in s and "the Forest" in s and "H-007" in s and "civilization-history" in s

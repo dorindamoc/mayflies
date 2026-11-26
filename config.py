@@ -19,14 +19,18 @@ class Config:
     model_think: dict = field(default_factory=dict)
     first_read_fraction: float = 0.33
     num_ctx: int = 32768
+    num_predict: int = 8192
     response_reserve: int = 2048
     think: bool = False
     max_tool_rounds: int = 6
-    max_population: int = 10
+    max_population: int = 20
+    education_picks: int = 3
+    offer_expiry_rounds: int = 3
     initial_population: int = 10
-    lifespan_prompts: int = 7
     memory_fragment_max: int = 1000
-    distilled_max: int = 600
+    short_term_max: int = 500
+    long_term_fraction: float = 0.5
+    long_term_entry_max: int = 300
     vote_threshold: int = 3
     heartbeat_interval: int = 3600
     board_recent: int = 20
@@ -40,14 +44,31 @@ class Config:
     matrix_human_user: str = ""
     matrix_human_name: str = "Dorin"
     matrix_room_id: str = ""
+    website_path: str = ""
+    website_publish: bool = False
+    website_repo: str = ""
+    website_token: str = ""
+    website_base_branch: str = "main"
+    canvas_max_per_prompt: int = 3
+    canvas_size: int = 512
+    restart_on_extinction: bool = False
+    max_civilizations: int = 10
 
     def __post_init__(self):
-        if not 5 <= self.lifespan_prompts <= 10:
-            raise ValueError("LIFESPAN_PROMPTS must be between 5 and 10")
+        if not 0 < self.long_term_fraction <= 0.8:
+            raise ValueError("LONG_TERM_FRACTION must be above 0 and at most 0.8")
         if not 1 <= self.max_population <= 20:
             raise ValueError("MAX_POPULATION must be between 1 and 20")
         if not 0 <= self.initial_population <= self.max_population:
             raise ValueError("INITIAL_POPULATION must not exceed MAX_POPULATION")
+        if not 64 <= self.canvas_size <= 1024:
+            raise ValueError("CANVAS_SIZE must be between 64 and 1024")
+        if self.max_civilizations < 1:
+            raise ValueError("MAX_CIVILIZATIONS must be at least 1")
+        if self.canvas_max_per_prompt < 0:
+            raise ValueError("CANVAS_MAX_PER_PROMPT must not be negative")
+        if self.website_publish and not (self.website_repo and self.website_token):
+            raise ValueError("WEBSITE_PUBLISH needs WEBSITE_REPO (owner/name) and WEBSITE_TOKEN")
 
     @property
     def models(self) -> tuple:
@@ -67,12 +88,21 @@ class Config:
         return self.home / "memory"
 
     @property
+    def long_term_tokens(self) -> int:
+        """The long-term memory an instance can hold; when it is full the instance has one last prompt."""
+        return int(self.num_ctx * self.long_term_fraction)
+
+    @property
+    def memories_dir(self) -> Path:
+        return self.memory_dir / "memories"
+
+    @property
     def messages_dir(self) -> Path:
         return self.home / "messages"
 
     @property
     def website_dir(self) -> Path:
-        return self.home / "website"
+        return Path(self.website_path) if self.website_path else self.home / "website"
 
     @property
     def state_dir(self) -> Path:
@@ -127,13 +157,17 @@ class Config:
             model_think=think_map,
             first_read_fraction=float(env.get("FIRST_READ_FRACTION", cls.first_read_fraction)),
             num_ctx=i("NUM_CTX", cls.num_ctx),
+            num_predict=i("NUM_PREDICT", cls.num_predict),
             think=s("THINK", "false").lower() in ("1", "true", "yes"),
             max_tool_rounds=i("MAX_TOOL_ROUNDS", cls.max_tool_rounds),
             max_population=i("MAX_POPULATION", cls.max_population),
+            education_picks=i("EDUCATION_PICKS", cls.education_picks),
+            offer_expiry_rounds=i("OFFER_EXPIRY_ROUNDS", cls.offer_expiry_rounds),
             initial_population=i("INITIAL_POPULATION", cls.initial_population),
-            lifespan_prompts=i("LIFESPAN_PROMPTS", cls.lifespan_prompts),
             memory_fragment_max=i("MEMORY_FRAGMENT_MAX", cls.memory_fragment_max),
-            distilled_max=i("DISTILLED_MAX", cls.distilled_max),
+            short_term_max=i("SHORT_TERM_MAX", cls.short_term_max),
+            long_term_fraction=float(env.get("LONG_TERM_FRACTION", cls.long_term_fraction)),
+            long_term_entry_max=i("LONG_TERM_ENTRY_MAX", cls.long_term_entry_max),
             vote_threshold=i("VOTE_THRESHOLD", cls.vote_threshold),
             heartbeat_interval=i("HEARTBEAT_INTERVAL", cls.heartbeat_interval),
             board_recent=i("BOARD_RECENT", cls.board_recent),
@@ -147,4 +181,13 @@ class Config:
             matrix_human_user=s("MATRIX_HUMAN_USER", ""),
             matrix_human_name=s("MATRIX_HUMAN_NAME", "Dorin"),
             matrix_room_id=s("MATRIX_ROOM_ID", ""),
+            website_path=s("WEBSITE_DIR", ""),
+            website_publish=s("WEBSITE_PUBLISH", "false").lower() in ("1", "true", "yes"),
+            website_repo=s("WEBSITE_REPO", ""),
+            website_token=s("WEBSITE_TOKEN", ""),
+            website_base_branch=s("WEBSITE_BASE_BRANCH", cls.website_base_branch),
+            canvas_max_per_prompt=i("CANVAS_MAX_PER_PROMPT", cls.canvas_max_per_prompt),
+            canvas_size=i("CANVAS_SIZE", cls.canvas_size),
+            restart_on_extinction=s("RESTART_ON_EXTINCTION", "false").lower() in ("1", "true", "yes"),
+            max_civilizations=i("MAX_CIVILIZATIONS", cls.max_civilizations),
         )

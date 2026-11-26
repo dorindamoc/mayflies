@@ -20,6 +20,7 @@ class Article:
     author: str
     date: str
     body: str
+    civ: Optional[int] = None  # the civilization that wrote it; None for the founding heritage
 
     @property
     def cost(self) -> int:
@@ -39,8 +40,10 @@ def _parse(path: Path) -> Article:
             k, v = line.split(":", 1)
             meta[k.strip()] = v.strip()
     tags = tuple(t for t in (x.strip() for x in meta.get("tags", "").split(",")) if t)
+    civ = meta.get("civ", "")
     return Article(meta["id"], meta.get("title", ""), tags, meta.get("summary", ""),
-                   meta.get("author", ""), meta.get("date", ""), body.lstrip("\n"))
+                   meta.get("author", ""), meta.get("date", ""), body.lstrip("\n"),
+                   int(civ) if civ.isdigit() else None)
 
 
 class Catalog:
@@ -71,16 +74,23 @@ class Catalog:
                 counts[t] = counts.get(t, 0) + 1
         return dict(sorted(counts.items()))
 
-    def query(self, tags) -> list:
+    @staticmethod
+    def recency(a: Article, current_civ) -> tuple:
+        """Sort key: the current civilization first, then newer civilizations, the founding heritage last."""
+        if current_civ is None:
+            return (0, a.id)
+        return (0 if a.civ == current_civ else 2 if a.civ is None else 1, -(a.civ or 0), a.id)
+
+    def query(self, tags, current_civ=None) -> list:
         wanted = {_tag(t) for t in tags}
         scored = []
         for a in self.articles():
             hits = len(wanted & set(a.tags))
             if hits:
-                scored.append((-hits, a.id, a))
+                scored.append((-hits, self.recency(a, current_civ), a))
         return [a for _, _, a in sorted(scored, key=lambda s: (s[0], s[1]))]
 
-    def add(self, author: str, title: str, tags, summary: str, body: str) -> Article:
+    def add(self, author: str, title: str, tags, summary: str, body: str, civ: Optional[int] = None) -> Article:
         title = " ".join(title.split())
         clean = []
         for t in tags:
@@ -95,7 +105,8 @@ class Catalog:
         art_id = f"H-{(max(nums) if nums else 0) + 1:03d}"
         summary = " ".join(summary.split())
         text = (f"---\nid: {art_id}\ntitle: {title}\ntags: {', '.join(clean)}\n"
-                f"summary: {summary}\nauthor: {' '.join(author.split())}\ndate: {stamp()[:10]}\n---\n"
+                f"summary: {summary}\nauthor: {' '.join(author.split())}\ndate: {stamp()[:10]}\n"
+                f"{f'civ: {civ}' + chr(10) if civ else ''}---\n"
                 f"{body.strip()}\n")
         with open(self.dir / f"{art_id}.md", "x") as fh:
             fh.write(text)

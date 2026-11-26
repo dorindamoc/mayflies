@@ -15,6 +15,8 @@ import json
 import random
 from pathlib import Path
 
+from store import atomic_write
+
 # 50 × 50 = 2500 possible names — enough for decades of daily instances
 FIRST = [
     "Still", "Pale", "Fleet", "Hollow", "Amber", "Silver", "Clear", "Brief",
@@ -75,6 +77,6 @@ def generate_name(names_file: Path, retired: set = None, rng=None) -> str:
 
         name = rng.choice(available)
         used.add(name)
-        names_file.write_text(json.dumps(sorted(used), indent=2))
+        atomic_write(names_file, json.dumps(sorted(used), indent=2))
 
     return name

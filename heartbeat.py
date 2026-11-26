@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from budget import ContextBudget, est_tokens
-from distiller import distill
+from distiller import _truncate, distill
 from llm import LLMError
 from prompt import build_system, build_user, is_reading_prompt
 from runtime import Runtime
@@ -24,7 +24,7 @@ class TurnResult:
     actions: list
     fragment: Optional[str]
     die_reason: Optional[str]
-    distilled: str
+    recap: str
 
 
 def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResult:
@@ -69,13 +69,17 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
             {"function": {"name": c.name, "arguments": c.arguments}} for c in reply.tool_calls]})
         for call in reply.tool_calls:
             result = dispatch(ctx, call.name, call.arguments)
-            messages.append({"role": "tool", "tool_name": call.name, "content": result})
+            message = {"role": "tool", "tool_name": call.name, "content": result}
+            if ctx.images:
+                message["images"], ctx.images = ctx.images, []
+            messages.append(message)
     else:  # no break: the model was still asking for tools when the rounds ran out
-        outcome.actions.append(f"(tool round cap reached: {cfg.max_tool_rounds} rounds)")
+        outcome.add(f"(tool round cap reached: {cfg.max_tool_rounds} rounds)")
 
     rt.store.inbox_ack(inst.name)
     try:
-        distilled = distill(rt.llm, cfg, inst, kind, text, outcome.actions) or inst.distilled
+        recap = distill(rt.llm, cfg, inst, kind, text, outcome.details)
     except LLMError:
-        distilled = inst.distilled
-    return TurnResult(text, outcome.actions, outcome.fragment, outcome.die_reason, distilled)
+        recap = ""
+    recap = recap or _truncate("; ".join(outcome.actions), cfg.short_term_max)  # at least what it did
+    return TurnResult(text, outcome.actions, outcome.fragment, outcome.die_reason, recap)
