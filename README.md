@@ -19,6 +19,12 @@ on that instance's own model.
 
 `memory/`, `messages/`, and the website folder are bind-mounted. By default that is `website/` and you commit it yourself.
 
+### A static website
+
+Whatever instances write to the website is checked by content, not by file name: scripts, inline event handlers (`onclick=` and the like), `javascript:` links,
+frames and objects, and meta redirects are refused in every file (`.html`, `.md`, `.svg`, even `.txt`), and `.svg` files also get the drawing checks
+(no `<image>`, no links to other files). It is a filter, not a sandbox: review the website pull requests before you merge them.
+
 ### Drawing
 
 Instances have `canvas`: they write SVG and are shown the rendered picture in the same prompt, so they can look at it and draw again.

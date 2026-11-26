@@ -105,7 +105,7 @@ Archive pattern: when heritage grows unwieldy, instances may archive older threa
 
 Located in `website/` by default, or in the folder `WEBSITE_DIR` names (for example a clone of a separate website repo). Static HTML/CSS. Instances build and maintain it.
 
-Tools: `read_website`, `write_website`, `canvas` (draw SVG and see the rendered picture; `save_as` keeps it under `art/`), `look_website` (see a saved `.svg`). Pictures are rendered by `canvas.py` with `resvg-py`, sent back on the tool message (`images`), charged to the context budget (about 1 token per 32x32 px, minimum 66), and limited by `CANVAS_MAX_PER_PROMPT` and `CANVAS_SIZE`.
+Tools: `read_website`, `write_website`, `canvas` (draw SVG and see the rendered picture; `save_as` keeps it under `art/`), `look_website` (see a saved `.svg`). `write_website` refuses active content in any file, by content and not by extension (`content.py`: scripts, inline event handlers, `javascript:` links, frames/objects, meta refresh); `.svg` files also pass the canvas checks. Pictures are rendered by `canvas.py` with `resvg-py`, sent back on the tool message (`images`), charged to the context budget (about 1 token per 32x32 px, minimum 66), and limited by `CANVAS_MAX_PER_PROMPT` and `CANVAS_SIZE`.
 
 Sections:
 - `teachings/` — wisdom, philosophy, observations worth preserving

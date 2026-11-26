@@ -13,6 +13,7 @@ from typing import Optional
 from budget import ContextBudget, est_tokens
 from canvas import CanvasError, check_svg, image_tokens, png_size, render_svg
 from config import Config
+from content import ActiveContentError, check_static
 from distiller import compact_note
 from heritage import Catalog
 from proposals import open_proposals
@@ -105,7 +106,8 @@ def tool_specs(cfg=None) -> list:
         _spec("read_website", "Read a website file.", {"path": _S}, ["path"]),
         _spec("write_website", "Write a website file (.html .css .md .txt), e.g. art/poem.html. An existing file "
               "written by someone else is not replaced unless you set overwrite true: read it and write the "
-              "combined content to add to it.",
+              "combined content to add to it. The site is static: scripts, inline event handlers (onclick=), frames and "
+              "redirects are refused in any file.",
               {"path": _S, "content": _S, "overwrite": {"type": "boolean"}}, ["path", "content"]),
         _spec("canvas", "Draw a picture with SVG and see it: you are shown the result, so you can look at what you "
               "made and draw again. Give the full <svg> with a viewBox, using shapes, paths, gradients and text; "
@@ -469,6 +471,12 @@ def _save_website(ctx, rel: str, content: str, overwrite) -> str:
     if len(content.encode()) > WEBSITE_MAX_BYTES:
         return "Error: file too large."
     target = _website_path(ctx.cfg, rel)
+    try:
+        check_static(content)
+        if target.suffix == ".svg":
+            check_svg(content)
+    except (ActiveContentError, CanvasError) as e:
+        return f"Error: {e}"
     key = str(target.relative_to(ctx.cfg.website_dir.resolve()))
     path, authors = _website_authors(ctx)
     owner = authors.get(key)

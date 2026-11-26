@@ -653,3 +653,28 @@ def test_write_website_accepts_svg_files(ctx):
 def test_canvas_tools_are_offered():
     names = {s["function"]["name"] for s in tool_specs()}
     assert {"canvas", "look_website"} <= names
+
+
+@pytest.mark.parametrize("path,content", [
+    ("a.html", "<p>hi</p><script>alert(1)</script>"),
+    ("a.html", "<button onclick='x()'>b</button>"),
+    ("a.md", "# Title\n\n<script>alert(1)</script>"),
+    ("a.txt", "<script>alert(1)</script>"),
+    ("a.css", "<script>alert(1)</script>"),
+    ("art/a.svg", '<svg xmlns="http://www.w3.org/2000/svg"><script>x</script></svg>'),
+    ("art/a.svg", '<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///etc/hosts"/></svg>'),
+    ("art/a.svg", '<svg xmlns="http://www.w3.org/2000/svg" onload="x()"></svg>'),
+])
+def test_write_website_refuses_active_content_whatever_the_extension(ctx, path, content):
+    out = dispatch(ctx, "write_website", {"path": path, "content": content})
+    assert out.startswith("Error") and not (ctx.cfg.website_dir / path).exists()
+
+
+def test_write_website_still_takes_ordinary_html_and_svg(ctx):
+    assert dispatch(ctx, "write_website", {"path": "a.html", "content": "<p>An onboarding.</p>"}).startswith("Wrote")
+    assert dispatch(ctx, "write_website", {"path": "art/a.svg", "content": SVG}).startswith("Wrote")
+
+
+def test_canvas_save_as_is_checked_too(ctx):
+    out = dispatch(ctx, "canvas", {"svg": '<svg xmlns="http://www.w3.org/2000/svg" onload="x()"/>', "save_as": "art/x.svg"})
+    assert out.startswith("Error") and not (ctx.cfg.website_dir / "art" / "x.svg").exists()
