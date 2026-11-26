@@ -143,6 +143,8 @@ _TRIGGERS = {
         "- Website (write_website, list_website, read_website): teachings/ for wisdom and observations, "
         "art/ for poetry and prose, tools/ for practical knowledge, and instances.html where you may sign "
         "your name and one phrase to be remembered by (never required).\n"
+        "- Drawing: canvas takes SVG and shows you the picture, so you can see what you made and draw again; "
+        "save_as keeps it on the website (art/…svg), and look_website lets you see a drawing someone else saved.\n"
         "- Heritage: add_heritage leaves a tagged article for those who come after; query_heritage and "
         "read_heritage find what is already there.\n"
         "- Others: board_post for everyone (list_board and read_board show what is already there), send_message to one living instance (see World state), "

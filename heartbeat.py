@@ -69,7 +69,10 @@ def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResu
             {"function": {"name": c.name, "arguments": c.arguments}} for c in reply.tool_calls]})
         for call in reply.tool_calls:
             result = dispatch(ctx, call.name, call.arguments)
-            messages.append({"role": "tool", "tool_name": call.name, "content": result})
+            message = {"role": "tool", "tool_name": call.name, "content": result}
+            if ctx.images:
+                message["images"], ctx.images = ctx.images, []
+            messages.append(message)
     else:  # no break: the model was still asking for tools when the rounds ran out
         outcome.add(f"(tool round cap reached: {cfg.max_tool_rounds} rounds)")
 

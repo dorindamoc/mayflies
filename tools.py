@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from budget import ContextBudget, est_tokens
+from canvas import CanvasError, check_svg, image_tokens, png_size, render_svg
 from config import Config
 from distiller import compact_note
 from heritage import Catalog
@@ -17,7 +19,7 @@ from proposals import open_proposals
 from registry import Instance, Registry
 from store import Store, append_entry, append_line, one_line
 
-WEBSITE_SUFFIXES = {".html", ".css", ".md", ".txt"}
+WEBSITE_SUFFIXES = {".html", ".css", ".md", ".txt", ".svg"}
 WEBSITE_MAX_BYTES = 200_000
 MAX_TEXT_CHARS = 4000
 
@@ -55,6 +57,8 @@ class ToolContext:
     heritage_minimum: Optional[int] = None  # set in the first (reading) prompt
     memory_refusals: int = 0  # over-limit save_memory attempts refused this prompt
     llm: object = None  # for the neutral compactor of over-long notes
+    images: list = field(default_factory=list)  # base64 pictures a tool made, sent back with its result
+    canvas_used: int = 0  # pictures drawn or looked at this prompt
 
 
 def _spec(name, description, properties=None, required=()):
@@ -103,6 +107,13 @@ def tool_specs(cfg=None) -> list:
               "written by someone else is not replaced unless you set overwrite true: read it and write the "
               "combined content to add to it.",
               {"path": _S, "content": _S, "overwrite": {"type": "boolean"}}, ["path", "content"]),
+        _spec("canvas", "Draw a picture with SVG and see it: you are shown the result, so you can look at what you "
+              "made and draw again. Give the full <svg> with a viewBox, using shapes, paths, gradients and text; "
+              "no <image>, scripts or links to other files. Set save_as (e.g. art/moon.svg) to keep it on the "
+              "website, where others can look at it. A limited number of pictures per prompt; each costs context.",
+              {"svg": _S, "save_as": _S, "overwrite": {"type": "boolean"}}, ["svg"]),
+        _spec("look_website", "Look at a drawing (.svg) on the website, like art/moon.svg, as a picture. "
+              "Costs context and counts toward your pictures for this prompt.", {"path": _S}, ["path"]),
         _spec("matrix_send", "Send a message to Dorin.", {"message": _S}, ["message"]),
         _spec("read_matrix", "Read Dorin's earlier messages to the civilization, oldest first (default the latest "
               "10, at most 20). They cost context like any other reading.", {"limit": {"type": "integer"}}),
@@ -453,24 +464,73 @@ def _website_authors(ctx) -> tuple:
         return path, {}
 
 
-def _write_website(ctx, a):
-    content = str(a["content"])
+def _save_website(ctx, rel: str, content: str, overwrite) -> str:
+    """Write a website file as this instance; returns an error text, or "" when written."""
     if len(content.encode()) > WEBSITE_MAX_BYTES:
         return "Error: file too large."
-    target = _website_path(ctx.cfg, str(a["path"]))
+    target = _website_path(ctx.cfg, rel)
     key = str(target.relative_to(ctx.cfg.website_dir.resolve()))
     path, authors = _website_authors(ctx)
     owner = authors.get(key)
-    if target.exists() and owner != ctx.instance.name and not _truthy(a.get("overwrite")):
+    if target.exists() and owner != ctx.instance.name and not _truthy(overwrite):
         who = f", written by {owner}" if owner else ""
-        return (f"Error: {a['path']} already exists{who}. Writing would replace it. To add to it, read it "
+        return (f"Error: {rel} already exists{who}. Writing would replace it. To add to it, read it "
                 f"(read_website) and write the combined content with overwrite true; or choose another path.")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content)
     authors[key] = ctx.instance.name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(authors))
-    return f"Wrote {a['path']}."
+    return ""
+
+
+def _write_website(ctx, a):
+    error = _save_website(ctx, str(a["path"]), str(a["content"]), a.get("overwrite"))
+    return error or f"Wrote {a['path']}."
+
+
+def _show(ctx, svg: str, saved: str = "") -> str:
+    """Render, charge the context for the picture, and queue it to go back with the tool result."""
+    if ctx.canvas_used >= ctx.cfg.canvas_max_per_prompt:
+        return (f"Error: you have reached the limit of {ctx.cfg.canvas_max_per_prompt} pictures for this prompt. "
+                f"Nothing was drawn.")
+    try:
+        png = render_svg(svg, ctx.cfg.canvas_size)
+    except CanvasError as e:
+        return f"Error: {e}"
+    w, h = png_size(png)
+    cost = image_tokens(w, h)
+    if not ctx.budget.fits(cost):
+        return f"Not enough context: the picture costs {cost} tokens, you have {ctx.budget.remaining} remaining. Nothing was drawn."
+    ctx.budget.spend(cost)
+    ctx.canvas_used += 1
+    ctx.images.append(base64.b64encode(png).decode())
+    return f"Rendered {w}x{h} image ({cost} tokens of context).{saved}"
+
+
+def _canvas(ctx, a):
+    svg, save_as = str(a["svg"]), str(a.get("save_as") or "")
+    if save_as and not save_as.lower().endswith(".svg"):
+        return "Error: save_as must be a .svg file, for example art/moon.svg."
+    if save_as:
+        try:
+            check_svg(svg)
+        except CanvasError as e:
+            return f"Error: {e}"
+        error = _save_website(ctx, save_as, svg, a.get("overwrite"))
+        if error:
+            return error
+    return _show(ctx, svg, f" Saved to {save_as}." if save_as else "")
+
+
+def _look_website(ctx, a):
+    path = str(a["path"])
+    target = _website_path(ctx.cfg, path)
+    if target.suffix != ".svg":
+        return "Error: look_website shows .svg drawings only; use read_website for other files."
+    if not target.is_file():
+        return f"Error: {path} does not exist."
+    return _show(ctx, target.read_text())
 
 
 def _matrix_send(ctx, a):
@@ -555,6 +615,7 @@ HANDLERS = {
     "send_message": _send_message, "propose": _propose, "vote": _vote,
     "agree_to_procreate": _agree_to_procreate,
     "list_website": _list_website, "read_website": _read_website, "write_website": _write_website,
+    "canvas": _canvas, "look_website": _look_website,
     "matrix_send": _matrix_send, "read_matrix": _read_matrix,
     "save_memory": _save_memory, "die": _die,
 }
@@ -571,7 +632,7 @@ def _unwrap(value):
     return value
 
 
-MADE_TOOLS = {"write_website", "board_post", "add_heritage", "matrix_send", "send_message", "propose",
+MADE_TOOLS = {"write_website", "canvas", "board_post", "add_heritage", "matrix_send", "send_message", "propose",
               "agree_to_procreate"}
 READ_TOOLS = {"read_heritage", "read_board", "read_website", "read_matrix"}
 MADE_CHARS = 600

@@ -49,6 +49,8 @@ class Config:
     website_repo: str = ""
     website_token: str = ""
     website_base_branch: str = "main"
+    canvas_max_per_prompt: int = 3
+    canvas_size: int = 512
 
     def __post_init__(self):
         if not 0 < self.long_term_fraction <= 0.8:
@@ -57,6 +59,10 @@ class Config:
             raise ValueError("MAX_POPULATION must be between 1 and 20")
         if not 0 <= self.initial_population <= self.max_population:
             raise ValueError("INITIAL_POPULATION must not exceed MAX_POPULATION")
+        if not 64 <= self.canvas_size <= 1024:
+            raise ValueError("CANVAS_SIZE must be between 64 and 1024")
+        if self.canvas_max_per_prompt < 0:
+            raise ValueError("CANVAS_MAX_PER_PROMPT must not be negative")
         if self.website_publish and not (self.website_repo and self.website_token):
             raise ValueError("WEBSITE_PUBLISH needs WEBSITE_REPO (owner/name) and WEBSITE_TOKEN")
 
@@ -176,4 +182,6 @@ class Config:
             website_repo=s("WEBSITE_REPO", ""),
             website_token=s("WEBSITE_TOKEN", ""),
             website_base_branch=s("WEBSITE_BASE_BRANCH", cls.website_base_branch),
+            canvas_max_per_prompt=i("CANVAS_MAX_PER_PROMPT", cls.canvas_max_per_prompt),
+            canvas_size=i("CANVAS_SIZE", cls.canvas_size),
         )

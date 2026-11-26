@@ -1,3 +1,4 @@
+import base64
 import pytest
 from tests.fakes import FakeLLM
 from budget import ContextBudget
@@ -584,3 +585,71 @@ def test_a_failed_call_records_the_error(ctx):
 def test_the_short_action_list_is_unchanged(ctx):
     dispatch(ctx, "board_post", {"text": "hello"})
     assert ctx.outcome.actions == ['board_post: {"text": "hello"}']
+
+
+SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="teal"/></svg>'
+
+
+def test_canvas_returns_text_and_attaches_the_picture(ctx):
+    pytest.importorskip("resvg_py")
+    before = ctx.budget.remaining
+    out = dispatch(ctx, "canvas", {"svg": SVG})
+    assert out.startswith("Rendered") and "512x512" in out
+    assert len(ctx.images) == 1 and base64.b64decode(ctx.images[0])[:4] == b"\x89PNG"
+    assert before - ctx.budget.remaining >= 258
+    assert not any(ctx.cfg.website_dir.rglob("*.svg"))
+
+
+def test_canvas_save_as_keeps_the_svg_on_the_website_under_the_authors_name(ctx):
+    pytest.importorskip("resvg_py")
+    out = dispatch(ctx, "canvas", {"svg": SVG, "save_as": "art/moon.svg"})
+    assert "Saved" in out and (ctx.cfg.website_dir / "art" / "moon.svg").read_text() == SVG
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    assert "already exists" in dispatch(ctx, "canvas", {"svg": SVG, "save_as": "art/moon.svg"})
+
+
+def test_canvas_refuses_a_save_path_that_is_not_svg(ctx):
+    pytest.importorskip("resvg_py")
+    assert dispatch(ctx, "canvas", {"svg": SVG, "save_as": "art/moon.html"}).startswith("Error")
+    assert ctx.images == []
+
+
+def test_canvas_reports_bad_svg_and_attaches_nothing(ctx):
+    pytest.importorskip("resvg_py")
+    assert "never closed" in dispatch(ctx, "canvas", {"svg": "<svg><oops"})
+    assert dispatch(ctx, "canvas", {"svg": '<svg xmlns="http://www.w3.org/2000/svg"><script/></svg>'}).startswith("Error")
+    assert ctx.images == []
+
+
+def test_canvas_is_limited_per_prompt(ctx):
+    pytest.importorskip("resvg_py")
+    for _ in range(ctx.cfg.canvas_max_per_prompt):
+        assert dispatch(ctx, "canvas", {"svg": SVG}).startswith("Rendered")
+    assert "limit" in dispatch(ctx, "canvas", {"svg": SVG}).lower()
+    assert len(ctx.images) == ctx.cfg.canvas_max_per_prompt
+
+
+def test_canvas_refuses_when_the_picture_does_not_fit_the_remaining_context(ctx):
+    pytest.importorskip("resvg_py")
+    ctx.budget.used = ctx.budget.total - ctx.budget.reserve - 100
+    out = dispatch(ctx, "canvas", {"svg": SVG})
+    assert "Not enough context" in out and ctx.images == []
+
+
+def test_look_website_shows_a_saved_drawing_and_refuses_other_files(ctx):
+    pytest.importorskip("resvg_py")
+    dispatch(ctx, "canvas", {"svg": SVG, "save_as": "art/moon.svg"})
+    ctx.images.clear()
+    assert dispatch(ctx, "look_website", {"path": "art/moon.svg"}).startswith("Rendered") and len(ctx.images) == 1
+    dispatch(ctx, "write_website", {"path": "a.html", "content": "<p>x</p>"})
+    assert dispatch(ctx, "look_website", {"path": "a.html"}).startswith("Error")
+    assert dispatch(ctx, "look_website", {"path": "art/none.svg"}).startswith("Error")
+
+
+def test_write_website_accepts_svg_files(ctx):
+    assert dispatch(ctx, "write_website", {"path": "art/x.svg", "content": SVG}).startswith("Wrote")
+
+
+def test_canvas_tools_are_offered():
+    names = {s["function"]["name"] for s in tool_specs()}
+    assert {"canvas", "look_website"} <= names

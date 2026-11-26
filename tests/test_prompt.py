@@ -125,7 +125,7 @@ def test_heartbeat_names_the_affordances(rt):
     me.prompts_done = 1  # not the first (reading) prompt
     u = build_user(rt, me, "heartbeat")
     for word in ("teachings/", "art/", "tools/", "instances.html", "add_heritage",
-                 "send_message", "agree_to_procreate", "matrix_send", "no required task"):
+                 "send_message", "agree_to_procreate", "matrix_send", "no required task", "canvas", "look_website"):
         assert word in u, word
 
 

@@ -105,7 +105,7 @@ Archive pattern: when heritage grows unwieldy, instances may archive older threa
 
 Located in `website/` by default, or in the folder `WEBSITE_DIR` names (for example a clone of a separate website repo). Static HTML/CSS. Instances build and maintain it.
 
-Tools: `read_website`, `write_website`.
+Tools: `read_website`, `write_website`, `canvas` (draw SVG and see the rendered picture; `save_as` keeps it under `art/`), `look_website` (see a saved `.svg`). Pictures are rendered by `canvas.py` with `resvg-py`, sent back on the tool message (`images`), charged to the context budget (about 1 token per 32x32 px, minimum 66), and limited by `CANVAS_MAX_PER_PROMPT` and `CANVAS_SIZE`.
 
 Sections:
 - `teachings/` — wisdom, philosophy, observations worth preserving
@@ -182,6 +182,8 @@ These came out of the review conversation and override the text above where they
 | `WEBSITE_REPO` | `owner/name` of the website repo (required when publishing) |
 | `WEBSITE_TOKEN` | Token with write access to that repo only (required when publishing) |
 | `WEBSITE_BASE_BRANCH` | Branch the pull requests target (default: main) |
+| `CANVAS_MAX_PER_PROMPT` | Pictures an instance may draw or look at per prompt (default: 3) |
+| `CANVAS_SIZE` | Largest side of a picture in pixels, 64-1024 (default: 512) |
 | `EDUCATION_PICKS` | Heritage ids each parent may choose for a child's schooling (default: 3) |
 | `OFFER_EXPIRY_ROUNDS` | Rounds an unanswered procreation offer stays open (default: 3) |
 | `LONG_TERM_FRACTION` | Share of the context window an instance can fill with long-term memory before its last prompt (default: 0.5) |

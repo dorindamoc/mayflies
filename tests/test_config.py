@@ -99,3 +99,12 @@ def test_publishing_needs_a_repo_and_a_token(tmp_path):
     cfg = Config.from_env(home=tmp_path, env={"WEBSITE_PUBLISH": "true", "WEBSITE_REPO": "o/r",
                                               "WEBSITE_TOKEN": "t", "WEBSITE_BASE_BRANCH": "trunk"})
     assert cfg.website_publish and cfg.website_repo == "o/r" and cfg.website_base_branch == "trunk"
+
+
+def test_canvas_settings(tmp_path):
+    cfg = Config.from_env(home=tmp_path, env={})
+    assert cfg.canvas_max_per_prompt == 3 and cfg.canvas_size == 512
+    cfg = Config.from_env(home=tmp_path, env={"CANVAS_MAX_PER_PROMPT": "1", "CANVAS_SIZE": "256"})
+    assert cfg.canvas_max_per_prompt == 1 and cfg.canvas_size == 256
+    with pytest.raises(ValueError):
+        Config.from_env(home=tmp_path, env={"CANVAS_SIZE": "4096"})

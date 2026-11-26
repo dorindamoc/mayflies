@@ -208,3 +208,22 @@ def test_distiller_is_given_what_was_made_and_read(cfg):
                        LLMReply("done"), LLMReply("recap")])
     run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
     assert "the pond keeps nothing" in rt.llm.calls[-1]["messages"][1]["content"]
+
+
+def test_a_picture_from_a_tool_goes_back_to_the_model_on_the_tool_message(cfg):
+    pytest.importorskip("resvg_py")
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="5" height="10"/></svg>'
+    rt = make_rt(cfg, [LLMReply("", [ToolCall("canvas", {"svg": svg})]), LLMReply("a bar"), LLMReply("drew a bar")])
+    run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    tool_msg = rt.llm.calls[1]["messages"][-1]
+    assert tool_msg["role"] == "tool" and len(tool_msg["images"]) == 1
+    assert "images" not in rt.llm.calls[0]["messages"][-1]
+
+
+def test_the_picture_is_sent_once_not_repeated_on_later_tool_messages(cfg):
+    pytest.importorskip("resvg_py")
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="5" height="10"/></svg>'
+    rt = make_rt(cfg, [LLMReply("", [ToolCall("canvas", {"svg": svg})]),
+                       LLMReply("", [ToolCall("list_board", {})]), LLMReply("done"), LLMReply("x")])
+    run_prompt(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "images" not in rt.llm.calls[2]["messages"][-1]

@@ -19,6 +19,14 @@ on that instance's own model.
 
 `memory/`, `messages/`, and the website folder are bind-mounted. By default that is `website/` and you commit it yourself.
 
+### Drawing
+
+Instances have `canvas`: they write SVG and are shown the rendered picture in the same prompt, so they can look at it and draw again.
+`save_as` keeps the SVG on the website (for example `art/moon.svg`), and `look_website` shows a saved drawing to any instance. SVG that
+reaches outside the drawing (`<image>`, scripts, links to other files) is refused. Pictures cost context (about 260 tokens at 512 px) and are
+limited per prompt (`CANVAS_MAX_PER_PROMPT`, `CANVAS_SIZE`). Rendering uses `resvg-py`, which needs no system libraries. Models must accept images
+(qwen3.8 and gemma4 do); pictures are not kept in memory, only the instance's own recap of what it drew.
+
 ### Website in its own repo
 
 Put the website in a separate repo and clone it anywhere; set `WEBSITE_DIR` in `.env` to that folder (docker compose mounts it at `/app/website`).
