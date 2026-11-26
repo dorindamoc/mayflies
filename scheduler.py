@@ -15,6 +15,7 @@ from config import Config
 from distiller import fold
 from heartbeat import run_prompt
 from matrix import MatrixInbox
+from publish import Publisher
 from name_generator import generate_name, load_retired
 from runtime import Runtime
 from store import atomic_write
@@ -27,13 +28,15 @@ def log(msg: str) -> None:
 
 
 class Scheduler:
-    def __init__(self, rt: Runtime, inbox=None, clock=time.monotonic, sleep=time.sleep):
+    def __init__(self, rt: Runtime, inbox=None, clock=time.monotonic, sleep=time.sleep, publisher=None):
         self.rt = rt
         self.cfg = rt.cfg
         self.inbox = inbox or MatrixInbox(self.cfg.state_dir / "matrix.json")
         self._clock, self._sleep = clock, sleep
         self._last_poll = None
         self._stop = False
+        self.publisher = publisher if publisher is not None else (
+            Publisher(self.cfg) if self.cfg.website_publish else None)
 
     # --- stopping ---
     @property
@@ -169,6 +172,13 @@ class Scheduler:
             log(f"canonize failed: {type(e).__name__}: {e}")
         self.rt.registry.save()
         self._round_path.unlink(missing_ok=True)
+        if self.publisher is not None:
+            try:
+                url = self.publisher.publish_round()
+                if url:
+                    log(f"website changes opened for review: {url}")
+            except Exception as e:
+                log(f"website publish failed: {type(e).__name__}: {e}")
 
     def idle(self, seconds: int) -> None:
         chunk = max(1, self.cfg.matrix_poll_seconds)

@@ -81,3 +81,21 @@ def test_procreation_settings(tmp_path):
     assert cfg.education_picks == 3 and cfg.offer_expiry_rounds == 3
     cfg = Config.from_env(home=tmp_path, env={"EDUCATION_PICKS": "5", "OFFER_EXPIRY_ROUNDS": "2"})
     assert cfg.education_picks == 5 and cfg.offer_expiry_rounds == 2
+
+
+def test_website_folder_comes_from_the_env_and_publishing_is_off_by_default(tmp_path):
+    cfg = Config.from_env(home=tmp_path, env={})
+    assert cfg.website_dir == tmp_path / "website" and not cfg.website_publish
+    assert cfg.website_base_branch == "main"
+    cfg = Config.from_env(home=tmp_path, env={"WEBSITE_DIR": "/srv/site"})
+    assert str(cfg.website_dir) == "/srv/site"
+
+
+def test_publishing_needs_a_repo_and_a_token(tmp_path):
+    with pytest.raises(ValueError):
+        Config.from_env(home=tmp_path, env={"WEBSITE_PUBLISH": "true", "WEBSITE_REPO": "o/r"})
+    with pytest.raises(ValueError):
+        Config.from_env(home=tmp_path, env={"WEBSITE_PUBLISH": "true", "WEBSITE_TOKEN": "t"})
+    cfg = Config.from_env(home=tmp_path, env={"WEBSITE_PUBLISH": "true", "WEBSITE_REPO": "o/r",
+                                              "WEBSITE_TOKEN": "t", "WEBSITE_BASE_BRANCH": "trunk"})
+    assert cfg.website_publish and cfg.website_repo == "o/r" and cfg.website_base_branch == "trunk"

@@ -103,7 +103,7 @@ Archive pattern: when heritage grows unwieldy, instances may archive older threa
 
 ### Website
 
-Located in `website/`. Tracked in the repo. Static HTML/CSS. Instances build and maintain it.
+Located in `website/` by default, or in the folder `WEBSITE_DIR` names (for example a clone of a separate website repo). Static HTML/CSS. Instances build and maintain it.
 
 Tools: `read_website`, `write_website`.
 
@@ -155,7 +155,7 @@ These came out of the review conversation and override the text above where they
 - **Matrix**: no separate listener. The scheduler polls between turns and while idle. Dorin's message is delivered as a non-counting prompt (with the instance's memories as context). Existing room history is not replayed on first start (the first poll only sets a baseline). Only instances that have finished their first, reading prompt receive messages; there is no pending queue for the others, and a newborn can read earlier messages with `read_matrix` (Dorin's last 10, at most 20, oldest first; it costs context). A message containing "for <name>" (case-insensitive, whole name) goes only to the named living instances; if none is named it goes to every educated instance, and a named instance that is not yet educated is skipped.
 - **Population** starts at 10 on `qwen3.8:27b`. The premium model is deferred. After the seed cohort, new instances come only from procreation.
 - **Stopping and recovery.** SIGTERM/SIGINT make the scheduler finish the current prompt and stop (a second signal exits at once); compose gives it `stop_grace_period: 20m`. Progress through a round is written to `.state/round.json` after each instance and cleared when the round's end-of-round work (births, canonization) is done; on start the round continues with the instances not yet done. State files (registry, memories, Matrix state, processed births, used names) are written with `store.atomic_write`; the registry keeps `instances.json.bak` and falls back to it if the main file is unreadable. A prompt cut off by a crash is not counted and is repeated.
-- **Docker only.** launchd/systemd are gone. Ollama is reached via `OLLAMA_HOST`; the `ollama` compose profile bundles it for Linux/GPU hosts. `website/` is not auto-committed from the container.
+- **Docker only.** launchd/systemd are gone. Ollama is reached via `OLLAMA_HOST`; the `ollama` compose profile bundles it for Linux/GPU hosts. The website is not committed from inside the container unless `WEBSITE_PUBLISH` is on: then the scheduler opens one pull request per round on `WEBSITE_REPO` (see `publish.py`), one commit per authoring instance, for the founder to merge.
 - First-gen names are retired via `seed/first_gen_names.json`.
 
 ## Environment variables
@@ -177,6 +177,11 @@ These came out of the review conversation and override the text above where they
 | `FIRST_READ_FRACTION` | Minimum share of the context an instance reads from heritage in its first prompt (default: 0.33) |
 | `MAX_TOOL_ROUNDS` | Tool-result follow-ups per prompt (default: 6) |
 | `MAX_POPULATION` | Hard population cap (default: 20) |
+| `WEBSITE_DIR` | Folder instances write the website into (default: `website/`) |
+| `WEBSITE_PUBLISH` | `true` to open a pull request per round on the website repo (default: false) |
+| `WEBSITE_REPO` | `owner/name` of the website repo (required when publishing) |
+| `WEBSITE_TOKEN` | Token with write access to that repo only (required when publishing) |
+| `WEBSITE_BASE_BRANCH` | Branch the pull requests target (default: main) |
 | `EDUCATION_PICKS` | Heritage ids each parent may choose for a child's schooling (default: 3) |
 | `OFFER_EXPIRY_ROUNDS` | Rounds an unanswered procreation offer stays open (default: 3) |
 | `LONG_TERM_FRACTION` | Share of the context window an instance can fill with long-term memory before its last prompt (default: 0.5) |

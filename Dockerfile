@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 MAYFLIES_HOME=/app
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir "httpx>=0.27,<1" "python-dotenv>=1.0,<2"
 COPY *.py entrypoint.sh ./
 COPY seed ./seed

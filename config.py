@@ -44,6 +44,11 @@ class Config:
     matrix_human_user: str = ""
     matrix_human_name: str = "Dorin"
     matrix_room_id: str = ""
+    website_path: str = ""
+    website_publish: bool = False
+    website_repo: str = ""
+    website_token: str = ""
+    website_base_branch: str = "main"
 
     def __post_init__(self):
         if not 0 < self.long_term_fraction <= 0.8:
@@ -52,6 +57,8 @@ class Config:
             raise ValueError("MAX_POPULATION must be between 1 and 20")
         if not 0 <= self.initial_population <= self.max_population:
             raise ValueError("INITIAL_POPULATION must not exceed MAX_POPULATION")
+        if self.website_publish and not (self.website_repo and self.website_token):
+            raise ValueError("WEBSITE_PUBLISH needs WEBSITE_REPO (owner/name) and WEBSITE_TOKEN")
 
     @property
     def models(self) -> tuple:
@@ -85,7 +92,7 @@ class Config:
 
     @property
     def website_dir(self) -> Path:
-        return self.home / "website"
+        return Path(self.website_path) if self.website_path else self.home / "website"
 
     @property
     def state_dir(self) -> Path:
@@ -164,4 +171,9 @@ class Config:
             matrix_human_user=s("MATRIX_HUMAN_USER", ""),
             matrix_human_name=s("MATRIX_HUMAN_NAME", "Dorin"),
             matrix_room_id=s("MATRIX_ROOM_ID", ""),
+            website_path=s("WEBSITE_DIR", ""),
+            website_publish=s("WEBSITE_PUBLISH", "false").lower() in ("1", "true", "yes"),
+            website_repo=s("WEBSITE_REPO", ""),
+            website_token=s("WEBSITE_TOKEN", ""),
+            website_base_branch=s("WEBSITE_BASE_BRANCH", cls.website_base_branch),
         )

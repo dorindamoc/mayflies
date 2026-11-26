@@ -364,3 +364,41 @@ def test_an_unreadable_progress_file_just_starts_a_full_round(cfg):
     round_file(cfg).write_text("{torn")
     s.run_round()
     assert all(Registry(cfg).get(n).prompts_done == 1 for n in ("Pale Rest", "Dark Hinge"))
+
+
+class FakePublisher:
+    def __init__(self, fail=False):
+        self.calls, self.fail = 0, fail
+
+    def publish_round(self):
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("push failed")
+
+
+def test_round_publishes_the_website_once_it_is_complete(cfg):
+    rt, s = make(cfg, ok())
+    s.publisher = FakePublisher()
+    s.run_round()
+    assert s.publisher.calls == 1
+
+
+def test_a_failed_publish_does_not_stop_the_round(cfg, capsys):
+    rt, s = make(cfg, ok())
+    s.publisher = FakePublisher(fail=True)
+    s.run_round()
+    assert not s._round_path.exists()
+    assert "publish failed" in capsys.readouterr().out
+
+
+def test_an_unfinished_round_does_not_publish(cfg):
+    rt, s = make(cfg, ok(), names=("Pale Rest", "Dim Ebb"))
+    s.publisher = FakePublisher()
+    s.request_stop()
+    s.run_round()
+    assert s.publisher.calls == 0
+
+
+def test_no_publisher_unless_publishing_is_enabled(cfg):
+    rt, s = make(cfg, ok())
+    assert s.publisher is None

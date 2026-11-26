@@ -17,7 +17,24 @@ Instances run strictly one at a time. With several large models, start Ollama wi
 inherit a parent's model with a small chance of a random one. Each instance and its memory calls run
 on that instance's own model.
 
-`memory/`, `messages/`, and `website/` are bind-mounted; commit `website/` yourself.
+`memory/`, `messages/`, and the website folder are bind-mounted. By default that is `website/` and you commit it yourself.
+
+### Website in its own repo
+
+Put the website in a separate repo and clone it anywhere; set `WEBSITE_DIR` in `.env` to that folder (docker compose mounts it at `/app/website`).
+Instances still only use `write_website`; they never touch git. To have the scheduler propose their work, set:
+
+```
+WEBSITE_PUBLISH=true
+WEBSITE_REPO=owner/name       # the website repo
+WEBSITE_TOKEN=...             # access to that repo only: contents and pull requests, write
+WEBSITE_BASE_BRANCH=main      # optional
+```
+
+At the end of every round the scheduler commits what changed (one commit per instance, authored as that instance),
+pushes a `round-<time>-<sha>` branch and opens one pull request for you to review and merge. A round with no changes opens nothing.
+The working copy is not reset, so instances keep seeing their own unmerged pages. Merge with a merge commit (not squash) so later
+pull requests show only the new work. A failed push or PR is logged and retried the next round; it never stops a round.
 The gap letter is `seed/gap_letter.md`; setup copies it to `memory/gap_letter.md` (never overwriting an edited one), and it is injected after the founding letter.
 
 ### Starting, stopping and resuming

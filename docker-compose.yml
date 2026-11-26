@@ -9,12 +9,14 @@ services:
         required: false
     environment:
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      # inside the container the website folder is always /app/website; WEBSITE_DIR in .env is the host path
+      WEBSITE_DIR: /app/website
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./memory:/app/memory
       - ./messages:/app/messages
-      - ./website:/app/website
+      - ${WEBSITE_DIR:-./website}:/app/website
 
   # Ollama on the host must listen beyond loopback to be reachable from the container:
   #   OLLAMA_HOST=0.0.0.0 ollama serve        (macOS app: launchctl setenv OLLAMA_HOST 0.0.0.0, restart it)
