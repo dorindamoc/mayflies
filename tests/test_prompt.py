@@ -186,3 +186,33 @@ def test_final_prompt_says_a_new_offer_lapses_but_answering_one_still_works(rt):
     me = rt.registry.get("Pale Rest")
     s = build_system(rt, me, "final").lower()
     assert "lapse" in s and "answer" in s
+
+
+def test_an_unnamed_civilization_is_suggested_a_name_never_ordered_one(rt):
+    from civs import Civilizations
+    Civilizations(rt.cfg).ensure_started(rt.registry)
+    me = rt.registry.get("Pale Rest")
+    s = build_system(rt, me, "heartbeat")
+    assert "Unnamed_1" in s and "propose_civilization_name" in s and "not a requirement" in s
+    assert "You are Pale Rest," in s
+
+
+def test_a_named_civilization_is_in_the_instances_name_and_the_suggestion_is_gone(rt):
+    from civs import Civilizations
+    civs = Civilizations(rt.cfg)
+    civs.ensure_started(rt.registry)
+    civs.set_name(1, "the Forest")
+    s = build_system(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "You are Pale Rest of the Forest," in s and "propose_civilization_name" not in s
+
+
+def test_earlier_civilizations_and_their_stories_are_pointed_to(rt):
+    from civs import Civilizations
+    civs = Civilizations(rt.cfg)
+    civs.ensure_started(rt.registry)
+    civs.set_name(1, "the Forest")
+    civs.close(1, "extinct", story="H-007")
+    civs.start(["Pale Rest"])
+    rt.registry.get("Pale Rest").civ = 2
+    s = build_system(rt, rt.registry.get("Pale Rest"), "heartbeat")
+    assert "Earlier civilizations" in s and "the Forest" in s and "H-007" in s and "civilization-history" in s

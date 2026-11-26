@@ -108,3 +108,12 @@ def test_canvas_settings(tmp_path):
     assert cfg.canvas_max_per_prompt == 1 and cfg.canvas_size == 256
     with pytest.raises(ValueError):
         Config.from_env(home=tmp_path, env={"CANVAS_SIZE": "4096"})
+
+
+def test_restart_settings(tmp_path):
+    cfg = Config.from_env(home=tmp_path, env={})
+    assert cfg.restart_on_extinction is False and cfg.max_civilizations == 10
+    cfg = Config.from_env(home=tmp_path, env={"RESTART_ON_EXTINCTION": "true", "MAX_CIVILIZATIONS": "3"})
+    assert cfg.restart_on_extinction is True and cfg.max_civilizations == 3
+    with pytest.raises(ValueError):
+        Config.from_env(home=tmp_path, env={"MAX_CIVILIZATIONS": "0"})

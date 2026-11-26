@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from civs import Civilizations, full_name
 from proposals import open_proposals
 from registry import Instance
 from runtime import Runtime
@@ -26,7 +27,7 @@ def _traits(traits: dict) -> str:
 
 
 def _identity(rt: Runtime, inst: Instance) -> str:
-    lines = [f"You are {inst.name}, running on {inst.model}.", "",
+    lines = [f"You are {full_name(rt.cfg, inst)}, running on {inst.model}.", "",
              "Your traits (fixed for life, 1-10). They are who you are: let them decide what you notice, what "
              "you make, what you doubt and what you leave alone. Do not default to the common view; where your "
              "temperament differs from the other instances, let that show:",
@@ -37,6 +38,28 @@ def _identity(rt: Runtime, inst: Instance) -> str:
             parent = rt.registry.get(p)
             if parent:
                 lines += [f"{p}'s traits:", _traits(parent.traits)]
+    return "\n".join(lines)
+
+
+def _civilization(rt: Runtime, inst: Instance) -> str:
+    civs = Civilizations(rt.cfg)
+    cur = civs.get(inst.civ)
+    if cur is None:
+        return ""
+    lines = [f"Civilization: you belong to {civs.label(cur['id'])} (number {cur['id']}), founded {cur['founded']}."]
+    if not cur["name"]:
+        lines.append("It has no name yet. Choosing one is the first thing you can decide together: propose it with "
+                     "propose_civilization_name and vote on proposals with vote, like any rule. This is a suggestion, "
+                     "not a requirement; a civilization may stay unnamed, and is then remembered as "
+                     f"Unnamed_{cur['id']}.")
+    earlier = [c for c in civs.records() if c["ended"] and c["id"] != cur["id"]]
+    if earlier:
+        rows = [f"- {civs.label(c['id'])} (ended {c['ended']}, {c['end_cause']}"
+                + (f"; its story is {c['story']}" if c["story"] else "") + ")" for c in earlier]
+        lines += ["Earlier civilizations, whose heritage you inherit:", *rows,
+                  "Their articles are marked with their civilization in listings, yours first. Their stories are "
+                  "heritage articles tagged civilization-history: read them if you want to learn from those who came "
+                  "before you."]
     return "\n".join(lines)
 
 
@@ -94,15 +117,16 @@ def build_system(rt: Runtime, inst: Instance, kind: str) -> str:
     mem = rt.cfg.memory_dir
     letters = [t for t in (_read(mem / "founding_letter.md"), _read(mem / "gap_letter.md")) if t]
     rules = _read(rt.store.rules_path) or "No rules adopted yet."
-    blocks = letters + [
+    blocks = letters + [b for b in [
         _identity(rt, inst),
         _lifespan(rt, inst, kind),
         _memory(rt, inst),
         "World state:\n" + rt.registry.world_state(),
+        _civilization(rt, inst),
         _heritage(rt),
         f"Your context window is {rt.cfg.num_ctx} tokens in total.",
         "Rules (binding, adopted by vote):\n" + rules,
-    ]
+    ] if b]
     return "\n\n".join(blocks)
 
 

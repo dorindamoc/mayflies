@@ -91,3 +91,20 @@ def test_a_corrupt_registry_with_no_backup_is_an_error(cfg):
     cfg.state_dir.joinpath("instances.json").write_text("{torn")
     with pytest.raises(ValueError):
         Registry(cfg)
+
+
+def test_instances_know_their_civilization_and_when_they_died(cfg):
+    r = Registry(cfg)
+    r.add(r.new_instance("Pale Rest", T, civ=2))
+    assert r.get("Pale Rest").civ == 2 and r.get("Pale Rest").died_at == ""
+    r.kill("Pale Rest", "memory full")
+    r.save()
+    again = Registry(cfg).get("Pale Rest")
+    assert again.civ == 2 and again.died_at
+
+
+def test_an_old_registry_without_civ_loads_as_civilization_one(cfg):
+    import json
+    (cfg.state_dir).mkdir(parents=True, exist_ok=True)
+    (cfg.state_dir / "instances.json").write_text(json.dumps([{"name": "Pale Rest", "model": "m", "traits": T}]))
+    assert Registry(cfg).get("Pale Rest").civ == 1

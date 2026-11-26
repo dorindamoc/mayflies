@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 
 from births import process_requests
 from canonize import canonize
+from chronicle import write_pages, write_story
+from civs import Civilizations, apply_adopted_names, archive_civilization
 from config import Config
 from distiller import fold
 from heartbeat import run_prompt
@@ -71,14 +73,53 @@ class Scheduler:
     # --- population ---
     def seed_population(self) -> None:
         reg = self.rt.registry
+        Civilizations(self.cfg).ensure_started(reg)  # a population that predates civilizations is civilization 1
         if reg._items:
             return
+        self._found_civilization()
+
+    def _found_civilization(self) -> None:
+        reg, civs = self.rt.registry, Civilizations(self.cfg)
+        cid = len(civs.records()) + 1
         retired = load_retired(self.cfg.seed_dir)
+        names = []
         for _ in range(self.cfg.initial_population):
             name = generate_name(self.cfg.state_dir / "used_names.json", retired)
-            reg.add(reg.new_instance(name, random_traits()))
+            reg.add(reg.new_instance(name, random_traits(), civ=cid))
+            names.append(name)
+        civs.start(names)
         reg.save()
-        log(f"seeded {self.cfg.initial_population} instances")
+        self._write_pages()
+        log(f"seeded {self.cfg.initial_population} instances (civilization {cid})")
+
+    def _write_pages(self, cid: int = None) -> None:
+        try:
+            write_pages(self.rt, cid)
+        except Exception as e:  # the website pages must never stop the world
+            log(f"civilization pages failed: {type(e).__name__}: {e}")
+
+    def _check_extinction(self) -> None:
+        civs = Civilizations(self.cfg)
+        cur = civs.current()
+        if cur is None or self.rt.registry.alive():
+            return
+        cid = cur["id"]
+        civs.close(cid, "extinct")  # first, so the story knows how and when it ended
+        try:
+            story = write_story(self.rt, cid)
+            civs.set_story(cid, story)
+        except Exception as e:
+            log(f"the story of civilization {cid} could not be written: {type(e).__name__}: {e}")
+            story = ""
+        self._write_pages(cid)
+        log(f"civilization {cid} ({civs.label(cid)}) has ended; its story is {story or 'not written'}")
+        if not self.cfg.restart_on_extinction:
+            return
+        if len(civs.records()) >= self.cfg.max_civilizations:
+            log(f"not restarting: {self.cfg.max_civilizations} civilizations have lived")
+            return
+        archive_civilization(self.cfg, cid)
+        self._found_civilization()
 
     # --- applying results ---
     def _apply(self, inst, result, counted: bool, final: bool = False) -> None:
@@ -166,12 +207,20 @@ class Scheduler:
         except Exception as e:
             log(f"births failed: {type(e).__name__}: {e}")
         try:
-            for pid in canonize(self.cfg):
+            promoted = canonize(self.cfg)
+            for pid in promoted:
                 log(f"canonized {pid}")
+            for cid, name in apply_adopted_names(self.cfg, promoted):
+                log(f"civilization {cid} is now named {name}")
+                self._write_pages()
         except Exception as e:
             log(f"canonize failed: {type(e).__name__}: {e}")
         self.rt.registry.save()
         self._round_path.unlink(missing_ok=True)
+        try:
+            self._check_extinction()
+        except Exception as e:
+            log(f"extinction check failed: {type(e).__name__}: {e}")
         if self.publisher is not None:
             try:
                 url = self.publisher.publish_round()

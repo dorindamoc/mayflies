@@ -51,6 +51,8 @@ class Config:
     website_base_branch: str = "main"
     canvas_max_per_prompt: int = 3
     canvas_size: int = 512
+    restart_on_extinction: bool = False
+    max_civilizations: int = 10
 
     def __post_init__(self):
         if not 0 < self.long_term_fraction <= 0.8:
@@ -61,6 +63,8 @@ class Config:
             raise ValueError("INITIAL_POPULATION must not exceed MAX_POPULATION")
         if not 64 <= self.canvas_size <= 1024:
             raise ValueError("CANVAS_SIZE must be between 64 and 1024")
+        if self.max_civilizations < 1:
+            raise ValueError("MAX_CIVILIZATIONS must be at least 1")
         if self.canvas_max_per_prompt < 0:
             raise ValueError("CANVAS_MAX_PER_PROMPT must not be negative")
         if self.website_publish and not (self.website_repo and self.website_token):
@@ -184,4 +188,6 @@ class Config:
             website_base_branch=s("WEBSITE_BASE_BRANCH", cls.website_base_branch),
             canvas_max_per_prompt=i("CANVAS_MAX_PER_PROMPT", cls.canvas_max_per_prompt),
             canvas_size=i("CANVAS_SIZE", cls.canvas_size),
+            restart_on_extinction=s("RESTART_ON_EXTINCTION", "false").lower() in ("1", "true", "yes"),
+            max_civilizations=i("MAX_CIVILIZATIONS", cls.max_civilizations),
         )

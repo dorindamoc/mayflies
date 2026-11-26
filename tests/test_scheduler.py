@@ -402,3 +402,104 @@ def test_an_unfinished_round_does_not_publish(cfg):
 def test_no_publisher_unless_publishing_is_enabled(cfg):
     rt, s = make(cfg, ok())
     assert s.publisher is None
+
+
+# --- civilizations ---
+
+def _world(cfg, names=("Pale Rest", "Dark Hinge"), env=None, replies=()):
+    from config import Config
+    from civs import Civilizations
+    c = Config.from_env(home=cfg.home, env=env or {"INITIAL_POPULATION": "2"})
+    for d in (c.memory_dir, c.messages_dir, c.website_dir, c.state_dir, c.heritage_dir, c.seed_dir):
+        d.mkdir(parents=True, exist_ok=True)
+    rt, s = make(c, list(replies), names=names)
+    Civilizations(c).ensure_started(rt.registry)
+    return c, rt, s
+
+
+def test_seeding_founds_civilization_one_and_lists_it_on_the_website(cfg):
+    from civs import Civilizations
+    rt = Runtime(cfg=cfg, llm=FakeLLM([]), store=Store(cfg), catalog=Catalog(cfg.heritage_dir),
+                 registry=Registry(cfg), matrix=None)
+    Scheduler(rt, sleep=lambda s: None).seed_population()
+    civ = Civilizations(cfg).current()
+    assert civ["id"] == 1 and sorted(civ["founders"]) == sorted(i.name for i in rt.registry.alive())
+    assert all(i.civ == 1 for i in rt.registry.alive())
+    assert "ongoing" in (cfg.website_dir / "civilizations.html").read_text()
+
+
+def test_a_living_civilization_is_not_closed(cfg):
+    from civs import Civilizations
+    c, rt, s = _world(cfg, replies=ok() + ok())
+    s.run_round()
+    assert Civilizations(c).current() is not None
+
+
+def test_extinction_closes_the_civilization_with_a_story_and_a_page(cfg):
+    from civs import Civilizations
+    c, rt, s = _world(cfg, replies=[LLMReply("They were two.")])
+    for n in ("Pale Rest", "Dark Hinge"):
+        rt.registry.kill(n, "memory full")
+    s.run_round()
+    civ = Civilizations(c).get(1)
+    assert civ["ended"] and civ["end_cause"] == "extinct" and civ["story"].startswith("H-")
+    assert rt.catalog.get(civ["story"]).civ == 1
+    assert "still living" not in rt.catalog.get(civ["story"]).body and "extinct" in rt.catalog.get(civ["story"]).body
+    assert (c.website_dir / "civilizations" / "1.html").exists()
+    assert "civilizations/1.html" in (c.website_dir / "civilizations.html").read_text()
+    assert len(rt.registry.alive()) == 0  # restart is off: the world stays empty
+    s.run_round()
+    assert len(Civilizations(c).records()) == 1 and len(rt.catalog.articles()) == 1  # closed once
+
+
+def test_with_the_flag_on_a_new_civilization_starts_clean_and_the_old_one_is_archived(cfg):
+    from civs import Civilizations
+    c, rt, s = _world(cfg, env={"INITIAL_POPULATION": "3", "RESTART_ON_EXTINCTION": "true"},
+                      replies=[LLMReply("They were two.")])
+    rt.store.board_post("Pale Rest", "the old board")
+    rt.store.proposals_path.write_text("### P-2026-11-26-001 — old\n")
+    rt.store.rules_path.write_text("old rule")
+    (c.state_dir / "processed.json").write_text('["PA-1"]')
+    rt.store.save_offers([{"from": "a", "to": "b"}])
+    rt.store.inbox_append("Pale Rest", "Dark Hinge", "old news")
+    rt.catalog.add("Pale Rest", "kept", ["x"], "s", "b", civ=1)
+    (c.website_dir / "art").mkdir()
+    (c.website_dir / "art" / "keep.svg").write_text("<svg/>")
+    for n in ("Pale Rest", "Dark Hinge"):
+        rt.registry.kill(n, "memory full")
+    s.run_round()
+    civs = Civilizations(c)
+    assert civs.get(1)["ended"] and civs.current()["id"] == 2
+    new = rt.registry.alive()
+    assert len(new) == 3 and all(i.civ == 2 for i in new) and set(civs.current()["founders"]) == {i.name for i in new}
+    assert not ({i.name for i in new} & {"Pale Rest", "Dark Hinge"})
+    assert rt.store.board_path.read_text() == "" and rt.store.proposals_path.read_text() == ""
+    assert rt.store.rules_path.read_text() == "" and rt.store.offers() == []
+    assert not (c.state_dir / "processed.json").exists() or (c.state_dir / "processed.json").read_text() == "[]"
+    assert rt.store.inbox_peek("Pale Rest") == []
+    old = c.memory_dir / "archive" / "civ-1"
+    assert "the old board" in (old / "board.md").read_text() and (old / "rules.md").read_text() == "old rule"
+    assert (c.website_dir / "art" / "keep.svg").exists() and rt.catalog.get("H-001").title == "kept"
+    assert rt.registry.get("Pale Rest") is not None and not rt.registry.get("Pale Rest").alive
+
+
+def test_no_restart_past_the_maximum_number_of_civilizations(cfg):
+    from civs import Civilizations
+    c, rt, s = _world(cfg, env={"INITIAL_POPULATION": "2", "RESTART_ON_EXTINCTION": "true", "MAX_CIVILIZATIONS": "1"},
+                      replies=[LLMReply("story")])
+    for n in ("Pale Rest", "Dark Hinge"):
+        rt.registry.kill(n, "memory full")
+    s.run_round()
+    assert Civilizations(c).current() is None and len(rt.registry.alive()) == 0
+
+
+def test_a_naming_rule_adopted_at_the_end_of_a_round_names_the_civilization(cfg):
+    from civs import Civilizations
+    c, rt, s = _world(cfg, names=("Pale Rest",), replies=ok())
+    rt.store.proposals_path.write_text(
+        "### P-2026-11-26-001 — Name the civilization: the Forest\nAuthor: Pale Rest\nMotivation: m\n"
+        "Names the civilization: the Forest\nProposed text:\nThis civilization is named the Forest.\n\n")
+    rt.store.votes_path.write_text("".join(f"- P-2026-11-26-001 | +1 | V{i} | ok |\n" for i in range(3)))
+    s.run_round()
+    assert Civilizations(c).label(1) == "the Forest"
+    assert "the Forest" in (c.website_dir / "civilizations.html").read_text()

@@ -71,7 +71,7 @@ def process_requests(rt: Runtime) -> list:
             break  # queued: stays unprocessed until a slot opens
         inst = rt.registry.new_instance(
             _new_name(rt), blend_traits(parents[0].traits, parents[1].traits),
-            parents=[p.name for p in parents])
+            parents=[p.name for p in parents], civ=parents[0].civ)
         picks = [p.strip() for p in _field(block, "Education").split(",") if p.strip()]
         inst.education = _education(rt, picks)
         rt.registry.add(inst)

@@ -22,6 +22,8 @@ class Instance:
     died: str = ""
     born_at: str = ""
     education: list = field(default_factory=list)  # heritage ids the parents chose for its schooling
+    civ: int = 1  # the civilization it belongs to
+    died_at: str = ""
 
 
 class Registry:
@@ -59,11 +61,11 @@ class Registry:
         best = max(deficit.values())
         return rng.choice([m for m in pool if deficit[m] >= best - 1e-9])
 
-    def new_instance(self, name: str, traits: dict, parents=(), model: str = None) -> Instance:
+    def new_instance(self, name: str, traits: dict, parents=(), model: str = None, civ: int = 1) -> Instance:
         if model is None:
             model = self.pick_model([self.get(p) if isinstance(p, str) else p for p in parents])
         return Instance(name=name, model=model, traits=dict(traits),
-                        parents=list(parents), born_at=stamp())
+                        parents=list(parents), born_at=stamp(), civ=civ)
 
     def add(self, inst: Instance) -> None:
         self._items[inst.name] = inst
@@ -78,6 +80,7 @@ class Registry:
         inst = self._items[name]
         inst.alive = False
         inst.died = cause
+        inst.died_at = stamp()
 
     def save(self) -> None:
         self.cfg.state_dir.mkdir(parents=True, exist_ok=True)

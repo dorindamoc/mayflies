@@ -118,3 +118,12 @@ def test_names_are_unique_and_never_first_gen(cfg):
         procreate(rt, f"PA-2026-11-13-{i + 1:03d}")
     born = process_requests(rt)
     assert len({b.name for b in born}) == len(born) == 10
+
+
+def test_a_child_is_born_into_its_parents_civilization(cfg):
+    rt = make_rt(cfg)
+    for n in ("Pale Rest", "Dark Hinge"):
+        rt.registry.get(n).civ = 3
+    procreate(rt, "PA-2026-11-13-001")
+    (child,) = process_requests(rt)
+    assert child.civ == 3

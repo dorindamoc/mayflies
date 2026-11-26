@@ -12,6 +12,7 @@ from typing import Optional
 
 from budget import ContextBudget, est_tokens
 from canvas import CanvasError, check_svg, image_tokens, png_size, render_svg
+from civs import NAME_MARK, Civilizations, clean_name
 from config import Config
 from content import ActiveContentError, check_static
 from distiller import compact_note
@@ -94,6 +95,11 @@ def tool_specs(cfg=None) -> list:
               "read the open proposals and the adopted rules in your prompt: do not file a proposal similar to an "
               "existing one. Vote on it, or argue for a change on the board, instead.",
               {"title": _S, "motivation": _S, "text": _S}, ["title", "motivation", "text"]),
+        _spec("propose_civilization_name",
+              "Propose a name for your civilization. It is an ordinary proposal: it is adopted as a rule, and the "
+              "civilization takes the name, when it reaches the vote threshold; vote on it with vote. Naming is "
+              "suggested, never required; an unnamed civilization is remembered as Unnamed_<number>.",
+              {"name": _S, "reason": _S}, ["name"]),
         _spec("vote", "Vote +1 or -1 on an open proposal (one vote per proposal; you cannot vote on your own proposal).",
               {"proposal_id": _S, "vote": {"type": "integer"}, "comment": _S}, ["proposal_id", "vote"]),
         _spec("agree_to_procreate",
@@ -222,8 +228,10 @@ def _remaining(ctx) -> str:
 HERITAGE_LIST_MAX = 60
 
 
-def _article_row(x) -> str:
-    return f"{x.id} | {x.title} | {x.cost} tokens | {x.summary} | tags: {', '.join(x.tags)}"
+def _article_row(ctx, x) -> str:
+    civs = Civilizations(ctx.cfg)
+    where = f" [{civs.label(x.civ)}]" if civs.records() else ""
+    return f"{x.id}{where} | {x.title} | {x.cost} tokens | {x.summary} | tags: {', '.join(x.tags)}"
 
 
 def _query_heritage(ctx, a):
@@ -232,17 +240,17 @@ def _query_heritage(ctx, a):
         counts = ctx.catalog.tag_counts()
         lines = [f"{t} ({n})" for t, n in counts.items()] or ["(no articles yet)"]
         out = "Heritage tags: " + ", ".join(lines)
-        arts = ctx.catalog.articles()
+        arts = sorted(ctx.catalog.articles(), key=lambda a: ctx.catalog.recency(a, ctx.instance.civ))
         if arts and len(arts) <= HERITAGE_LIST_MAX:
             out += ("\nArticles (read some with read_heritage, e.g. {\"ids\": [\"H-001\", \"H-002\"]}):\n"
-                    + "\n".join(_article_row(x) for x in arts))
+                    + "\n".join(_article_row(ctx, x) for x in arts))
         elif arts:
             out += "\nMany articles exist: query_heritage with some of these tags (a list) to see their ids."
         return out + "\n" + _remaining(ctx)
-    arts = ctx.catalog.query(tags)
+    arts = ctx.catalog.query(tags, current_civ=ctx.instance.civ)
     if not arts:
         return "No articles match those tags.\n" + _remaining(ctx)
-    return "\n".join(_article_row(x) for x in arts) + "\n" + _remaining(ctx)
+    return "\n".join(_article_row(ctx, x) for x in arts) + "\n" + _remaining(ctx)
 
 
 def _heritage_ids(a: dict) -> list:
@@ -289,7 +297,7 @@ def _read_heritage(ctx, a):
 def _add_heritage(ctx, a):
     body = str(_first_of(a, "body", "text", "content")).strip()
     summary = a.get("summary") or re.split(r"(?<=[.!?])\s", body, maxsplit=1)[0][:160]
-    art = ctx.catalog.add(ctx.instance.name, a["title"], _as_list(a["tags"]), summary, body)
+    art = ctx.catalog.add(ctx.instance.name, a["title"], _as_list(a["tags"]), summary, body, civ=ctx.instance.civ)
     return f"Added {art.id} with tags {', '.join(art.tags)}."
 
 
@@ -362,6 +370,22 @@ def _propose(ctx, a):
                  f"### {pid} — {one_line(a['title'])}\nAuthor: {ctx.instance.name}\n"
                  f"Motivation: {one_line(a['motivation'])}\nProposed text:\n{str(a['text']).strip()}")
     return f"Proposal filed as {pid}"
+
+
+def _propose_civilization_name(ctx, a):
+    try:
+        name = clean_name(a["name"])
+    except ValueError as e:
+        return f"Error: {e}"
+    title = f"Name the civilization: {name}"
+    if any(p["title"].lower() == title.lower() for p in open_proposals(ctx.store)):
+        return f"Error: a proposal to name the civilization {name!r} is already open. Vote on it."
+    reason = one_line(str(a.get("reason") or "")) or "A name for the society we are."
+    pid = ctx.store.next_id("P", ctx.store.proposals_path)
+    append_entry(ctx.store.proposals_path,
+                 f"### {pid} — {title}\nAuthor: {ctx.instance.name}\nMotivation: {reason}\n"
+                 f"{NAME_MARK} {name}\nProposed text:\nThis civilization is named {name}.")
+    return f"Proposal to name the civilization {name} filed as {pid}"
 
 
 def _vote(ctx, a):
@@ -621,6 +645,7 @@ HANDLERS = {
     "query_heritage": _query_heritage, "read_heritage": _read_heritage, "add_heritage": _add_heritage,
     "board_post": _board_post, "list_board": _list_board, "read_board": _read_board,
     "send_message": _send_message, "propose": _propose, "vote": _vote,
+    "propose_civilization_name": _propose_civilization_name,
     "agree_to_procreate": _agree_to_procreate,
     "list_website": _list_website, "read_website": _read_website, "write_website": _write_website,
     "canvas": _canvas, "look_website": _look_website,
@@ -641,7 +666,7 @@ def _unwrap(value):
 
 
 MADE_TOOLS = {"write_website", "canvas", "board_post", "add_heritage", "matrix_send", "send_message", "propose",
-              "agree_to_procreate"}
+              "propose_civilization_name", "agree_to_procreate"}
 READ_TOOLS = {"read_heritage", "read_board", "read_website", "read_matrix"}
 MADE_CHARS = 600
 READ_CHARS = 300

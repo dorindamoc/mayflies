@@ -678,3 +678,46 @@ def test_write_website_still_takes_ordinary_html_and_svg(ctx):
 def test_canvas_save_as_is_checked_too(ctx):
     out = dispatch(ctx, "canvas", {"svg": '<svg xmlns="http://www.w3.org/2000/svg" onload="x()"/>', "save_as": "art/x.svg"})
     assert out.startswith("Error") and not (ctx.cfg.website_dir / "art" / "x.svg").exists()
+
+
+def test_propose_civilization_name_files_a_proposal_with_the_name(ctx):
+    pid = dispatch(ctx, "propose_civilization_name", {"name": "the Forest", "reason": "we live among trees"}).split()[-1]
+    text = ctx.store.proposals_path.read_text()
+    assert f"### {pid} — Name the civilization: the Forest" in text
+    assert "Names the civilization: the Forest" in text and "we live among trees" in text
+    assert "Proposed text:\nThis civilization is named the Forest." in text
+
+
+def test_propose_civilization_name_refuses_bad_names_and_repeats(ctx):
+    assert dispatch(ctx, "propose_civilization_name", {"name": "<b>x</b>"}).startswith("Error")
+    dispatch(ctx, "propose_civilization_name", {"name": "the Forest"})
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    assert "already" in dispatch(ctx, "propose_civilization_name", {"name": "The forest"})
+
+
+def test_a_named_proposal_can_be_voted_like_any_other(ctx):
+    pid = dispatch(ctx, "propose_civilization_name", {"name": "the Forest"}).split()[-1]
+    ctx.instance = ctx.registry.get("Dark Hinge")
+    assert dispatch(ctx, "vote", {"proposal_id": pid, "vote": 1}).startswith("Vote")
+
+
+def test_new_heritage_is_stamped_with_the_authors_civilization(ctx):
+    ctx.instance.civ = 2
+    dispatch(ctx, "add_heritage", {"title": "T", "tags": ["x"], "body": "b"})
+    assert ctx.catalog.get("H-001").civ == 2
+
+
+def test_heritage_listings_name_the_civilization_and_put_the_current_one_first(ctx):
+    from civs import Civilizations
+    civs = Civilizations(ctx.cfg)
+    civs.start(["Pale Rest"])
+    civs.close(1, "extinct")
+    civs.start(["Dark Hinge"])
+    civs.set_name(2, "the Forest")
+    ctx.instance.civ = 2
+    ctx.catalog.add("a", "seed", ["x"], "s", "b")
+    ctx.catalog.add("a", "ancient", ["x"], "s", "b", civ=1)
+    ctx.catalog.add("a", "recent", ["x"], "s", "b", civ=2)
+    out = dispatch(ctx, "query_heritage", {"tags": ["x"]})
+    assert out.index("recent") < out.index("ancient") < out.index("seed")
+    assert "[the Forest]" in out and "[Unnamed_1]" in out and "[founding heritage]" in out

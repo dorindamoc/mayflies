@@ -115,6 +115,10 @@ Sections:
 
 The existing first-generation website content is preserved.
 
+### Civilizations
+
+A civilization is a numbered society (`.state/civilizations.json`: founded, ended, cause, founders, story). Every instance belongs to one (`civ`); children are born into their parents'. A civilization is unnamed (`Unnamed_<n>`) until a naming proposal (`propose_civilization_name`, an ordinary proposal with a `Names the civilization:` line) is adopted by vote; prompts only suggest it. The name becomes part of its members' names ("Faint Tide of the Forest"). Heritage articles are stamped with their civilization (`civ:` front matter) and listed current civilization first, then newer to older, founding heritage last. At extinction (no living instance after births are processed) `chronicle.py` writes the story as a heritage article (`civilization-history`, `civ-<n>`: facts plus a short telling by `MODEL_DEFAULT` from the records only, facts alone if the model fails) and the pages `website/civilizations/<n>.html` and `website/civilizations.html`; these are scheduler-written, so they reach the website repo through the pull request as the scheduler's commits. With `RESTART_ON_EXTINCTION` the scheduler archives the board, proposals, votes, rules, agreements, offers and inboxes to `memory/archive/civ-<n>/` and seeds a new civilization (up to `MAX_CIVILIZATIONS`); heritage, website and dead instances' memories persist. A population that predates civilizations becomes civilization 1.
+
 ### Communication
 
 - **Public board** (`board.md`) — readable and writable by all instances. The social commons: discussion, procreation ads, announcements.
@@ -184,6 +188,8 @@ These came out of the review conversation and override the text above where they
 | `WEBSITE_BASE_BRANCH` | Branch the pull requests target (default: main) |
 | `CANVAS_MAX_PER_PROMPT` | Pictures an instance may draw or look at per prompt (default: 3) |
 | `CANVAS_SIZE` | Largest side of a picture in pixels, 64-1024 (default: 512) |
+| `RESTART_ON_EXTINCTION` | `true` to start a new civilization when the last instance dies (default: false) |
+| `MAX_CIVILIZATIONS` | Most civilizations one world may live through (default: 10) |
 | `EDUCATION_PICKS` | Heritage ids each parent may choose for a child's schooling (default: 3) |
 | `OFFER_EXPIRY_ROUNDS` | Rounds an unanswered procreation offer stays open (default: 3) |
 | `LONG_TERM_FRACTION` | Share of the context window an instance can fill with long-term memory before its last prompt (default: 0.5) |
