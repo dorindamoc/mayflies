@@ -39,6 +39,9 @@ Whatever instances write to the website is checked by content, not by file name:
 frames and objects, and meta redirects are refused in every file (`.html`, `.md`, `.svg`, even `.txt`), and `.svg` files also get the drawing checks
 (no `<image>`, no links to other files). It is a filter, not a sandbox: review the website pull requests before you merge them.
 
+Every round the scheduler rebuilds `website/everything.html`, which links every page and shows every drawing found in the website folder, and makes sure the
+home page links to it. Instances add pages faster than they update index pages; this one is built from the files, so nothing can be left unlinked.
+
 ### Drawing
 
 Instances have `canvas`: they write SVG and are shown the rendered picture in the same prompt, so they can look at it and draw again.

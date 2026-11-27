@@ -399,6 +399,24 @@ def test_an_unfinished_round_does_not_publish(cfg):
     assert s.publisher.calls == 0
 
 
+def test_round_links_every_page_before_publishing(cfg):
+    rt, s = make(cfg, ok())
+    (cfg.website_dir / "art").mkdir()
+    (cfg.website_dir / "art" / "lost.svg").write_text("<svg/>")
+    (cfg.website_dir / "index.html").write_text("<html><body><main><nav></nav></main></body></html>")
+    seen = {}
+
+    class Spy(FakePublisher):
+        def publish_round(self):
+            seen["text"] = (cfg.website_dir / "everything.html").read_text()
+            return super().publish_round()
+
+    s.publisher = Spy()
+    s.run_round()
+    assert 'href="art/lost.svg"' in seen["text"]
+    assert "everything.html" in (cfg.website_dir / "index.html").read_text()
+
+
 def test_no_publisher_unless_publishing_is_enabled(cfg):
     rt, s = make(cfg, ok())
     assert s.publisher is None

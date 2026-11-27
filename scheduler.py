@@ -20,6 +20,7 @@ from matrix import MatrixInbox
 from publish import Publisher
 from name_generator import generate_name, load_retired
 from runtime import Runtime
+from sitemap import write_sitemap
 from store import atomic_write
 from setup import init_home
 from trait_generator import random_traits
@@ -97,6 +98,12 @@ class Scheduler:
             write_pages(self.rt, cid)
         except Exception as e:  # the website pages must never stop the world
             log(f"civilization pages failed: {type(e).__name__}: {e}")
+
+    def _write_sitemap(self) -> None:
+        try:
+            write_sitemap(self.cfg.website_dir)
+        except Exception as e:  # a missing link must never stop the world
+            log(f"everything page failed: {type(e).__name__}: {e}")
 
     def _check_extinction(self) -> None:
         civs = Civilizations(self.cfg)
@@ -221,6 +228,7 @@ class Scheduler:
             self._check_extinction()
         except Exception as e:
             log(f"extinction check failed: {type(e).__name__}: {e}")
+        self._write_sitemap()
         if self.publisher is not None:
             try:
                 url = self.publisher.publish_round()
