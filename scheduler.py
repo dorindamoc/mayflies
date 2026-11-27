@@ -155,12 +155,16 @@ class Scheduler:
         final = self.rt.memories.is_full(name)
         kind = "final" if final else "heartbeat"
         log(f"{name}: {kind} prompt {inst.prompts_done + 1} (long-term memory {int(self.rt.memories.fill(name) * 100)}%)")
+        # what Dorin wrote since the last prompt rides along; an instance still reading is not written to
+        owed = self.inbox.owed(name) if inst.prompts_done >= 1 else []
         try:
-            result = run_prompt(self.rt, inst, kind)
+            result = run_prompt(self.rt, inst, kind, matrix_msgs=[p["body"] for p in owed] or None)
         except Exception as e:  # LLM outage or anything unexpected: not counted, nobody dies
             log(f"{name}: prompt failed, not counted ({type(e).__name__}: {e})")
             return
         self._apply(inst, result, counted=True, final=final)
+        for p in owed:
+            self.inbox.mark_delivered(p["event_id"], name)
 
     # --- matrix ---
     def step_matrix(self, force: bool = False) -> None:
@@ -178,20 +182,24 @@ class Scheduler:
         alive = [i.name for i in self.rt.registry.alive()]
         # only instances that finished their first (reading) prompt are written to
         educated = [i.name for i in self.rt.registry.alive() if i.prompts_done >= 1]
-        for msg, name in self.inbox.due(educated, alive):
+        self.inbox.resolve(educated, alive)
+        # only urgent and named messages get a prompt of their own, one per instance with everything it is owed;
+        # the rest wait for the instance's next heartbeat
+        for name, owed in self.inbox.immediate(educated, alive):
             if self.stopping:
                 break
             inst = self.rt.registry.get(name)
             if inst is None or not inst.alive:
                 continue
-            log(f"{name}: matrix prompt")
+            log(f"{name}: matrix prompt ({len(owed)} message{'s' if len(owed) != 1 else ''})")
             try:
-                result = run_prompt(self.rt, inst, "matrix", matrix_msg=msg["body"])
+                result = run_prompt(self.rt, inst, "matrix", matrix_msgs=[p["body"] for p in owed])
             except Exception as e:
                 log(f"{name}: matrix prompt failed, will retry ({type(e).__name__}: {e})")
                 continue
             self._apply(inst, result, counted=False)
-            self.inbox.mark_delivered(msg["event_id"], name)
+            for p in owed:
+                self.inbox.mark_delivered(p["event_id"], name)
         self.inbox.prune([i.name for i in self.rt.registry.alive()])
 
     # --- rounds ---

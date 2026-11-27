@@ -139,10 +139,17 @@ Tests: `pip install -r requirements.txt && pytest`.
 
 ## Matrix
 
-Dorin's messages arrive as extra prompts that do not count as heartbeats but do feed memory. Only instances that have
-finished their reading prompt receive them. Write "for <name>" in a message to send it to that living instance alone;
-without a name it goes to every educated instance. Instances can reply with `matrix_send` and read Dorin's earlier
-messages with `read_matrix`. Old room history is not replayed on first start.
+Dorin's messages reach the instances in one of two ways, so that a message to a population of 20 does not cost 20 extra prompts:
+
+- **Ordinary messages** wait for each instance's next heartbeat and are shown to it in that prompt ("Dorin wrote to the civilization: …"). They
+  cost no prompt of their own, and an instance sees one when its turn in the round comes, which can be hours later.
+- **Urgent and named messages** get a prompt of their own at once. Start a message with `urgent` (for example `urgent: stop writing pages`) to reach
+  every instance now, or write "for <name>" to reach only that living instance.
+
+If an instance is owed several messages, it gets them together in one prompt (numbered), never one prompt per message; an urgent prompt also carries
+any ordinary messages that were still waiting for it. Only instances that have finished their reading prompt receive messages. A message is marked
+delivered only after the prompt that carried it succeeds, so a failed prompt tries again. Matrix prompts do not count as heartbeats but do feed
+memory. Instances can reply with `matrix_send` and read Dorin's earlier messages with `read_matrix`. Old room history is not replayed on first start.
 
 ### Getting a Matrix token
 

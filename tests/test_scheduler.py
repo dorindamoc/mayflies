@@ -77,7 +77,7 @@ def test_next_prompt_folds_the_old_short_term_into_long_term(cfg):
 
 def test_matrix_prompts_feed_memory_too(cfg):
     rt, s = make(cfg, ok() + ok("replied", "matrix recap") + [LLMReply("entry")],
-                 matrix=FakeMatrix([[], [{"event_id": "$1", "sender": "@d:x", "body": "hello", "ts": 1}]]))
+                 matrix=FakeMatrix([[], [{"event_id": "$1", "sender": "@d:x", "body": "urgent: hello", "ts": 1}]]))
     s.run_counted("Pale Rest")
     s.step_matrix(force=True)
     s.step_matrix(force=True)
@@ -140,7 +140,7 @@ def test_round_runs_each_instance_then_births_and_canonizes(cfg):
 
 def test_matrix_prompts_do_not_count_and_reach_all_alive(cfg):
     m = FakeMatrix([[{"event_id": "$0", "body": "old", "ts": 0}],
-                    [{"event_id": "$0", "body": "old", "ts": 0}, {"event_id": "$1", "body": "hello all", "ts": 1}]])
+                    [{"event_id": "$0", "body": "old", "ts": 0}, {"event_id": "$1", "body": "urgent: hello all", "ts": 1}]])
     object.__setattr__(cfg, "matrix_poll_seconds", 0)
     rt, s = make(cfg, ok() * 2, names=("Pale Rest", "Dark Hinge"), matrix=m)
     educate(rt, "Pale Rest", "Dark Hinge")
@@ -156,7 +156,7 @@ def test_matrix_prompts_do_not_count_and_reach_all_alive(cfg):
 
 
 def test_matrix_reply_via_tool(cfg):
-    m = FakeMatrix([[], [{"event_id": "$1", "body": "ping", "ts": 1}]])
+    m = FakeMatrix([[], [{"event_id": "$1", "body": "urgent: ping", "ts": 1}]])
     rt, s = make(cfg, [LLMReply("", [ToolCall("matrix_send", {"message": "pong"})]), LLMReply("sent"), LLMReply("n")],
                  matrix=m)
     educate(rt, "Pale Rest")
@@ -166,7 +166,7 @@ def test_matrix_reply_via_tool(cfg):
 
 
 def test_matrix_failure_keeps_message_pending(cfg):
-    m = FakeMatrix([[], [{"event_id": "$1", "body": "ping", "ts": 1}]])
+    m = FakeMatrix([[], [{"event_id": "$1", "body": "urgent: ping", "ts": 1}]])
     rt, s = make(cfg, [LLMError("down")] + ok(), matrix=m)
     educate(rt, "Pale Rest")
     s.step_matrix(force=True)
@@ -229,7 +229,7 @@ def educate(rt, *names):
 
 
 def test_only_instances_that_finished_their_first_prompt_receive_messages(cfg):
-    m = FakeMatrix([[], [{"event_id": "$1", "body": "hello all", "ts": 1}], []])
+    m = FakeMatrix([[], [{"event_id": "$1", "body": "urgent: hello all", "ts": 1}], []])
     object.__setattr__(cfg, "matrix_poll_seconds", 0)
     rt, s = make(cfg, ok() * 3, names=("Pale Rest", "Dark Hinge"), matrix=m)
     educate(rt, "Dark Hinge")
@@ -269,7 +269,7 @@ def test_a_message_naming_several_instances_goes_to_each_of_them(cfg):
 
 
 def test_a_message_naming_nobody_goes_to_everyone_educated(cfg):
-    rt, s = _send(cfg, "hello everyone")
+    rt, s = _send(cfg, "urgent: hello everyone")
     assert len(_delivered_to(rt, "hello everyone")) == 3
 
 
@@ -279,6 +279,58 @@ def test_a_named_instance_that_is_not_educated_yet_is_not_written_to_and_nobody_
     educate(rt, "Warm Trace")   # graduating later does not deliver it
     s.step_matrix(force=True)
     assert rt.llm.calls == []
+
+
+# --- ordinary messages ride along with the heartbeat ---
+
+def test_an_ordinary_message_costs_no_prompt_of_its_own(cfg):
+    rt, s = _send(cfg, "hello everyone")
+    assert rt.llm.calls == []
+
+
+def test_an_ordinary_message_arrives_with_the_next_heartbeat_once(cfg):
+    rt, s = _send(cfg, "hello everyone", names=("Pale Rest", "Dark Hinge"))
+    s.run_counted("Pale Rest")
+    got = _delivered_to(rt, "hello everyone")
+    assert len(got) == 1
+    assert "wrote to the civilization" in got[0]
+    s.run_counted("Pale Rest")
+    assert len(_delivered_to(rt, "hello everyone")) == 1   # not repeated at the next one
+    s.run_counted("Dark Hinge")
+    assert len(_delivered_to(rt, "hello everyone")) == 2   # each instance gets it at its own heartbeat
+    assert rt.registry.get("Pale Rest").prompts_done == 3  # the message did not make the prompts any fewer
+
+
+def test_a_failed_heartbeat_does_not_use_up_the_message(cfg):
+    rt, s = _send(cfg, "hello everyone", names=("Pale Rest",))
+    rt.llm.replies.insert(0, LLMError("down"))
+    s.run_counted("Pale Rest")
+    s.run_counted("Pale Rest")
+    assert len(_delivered_to(rt, "hello everyone")) == 2   # tried again, and it got through
+
+
+def test_an_instance_still_reading_is_not_given_the_message(cfg):
+    rt, s = _send(cfg, "hello everyone", names=("Pale Rest", "Dark Hinge"), educated=("Dark Hinge",))
+    s.run_counted("Pale Rest")   # its first, reading prompt
+    assert _delivered_to(rt, "hello everyone") == []
+
+
+def test_several_messages_reach_an_instance_in_one_prompt(cfg):
+    m = FakeMatrix([[], [{"event_id": "$1", "body": "urgent: first", "ts": 1},
+                         {"event_id": "$2", "body": "second, quieter", "ts": 2},
+                         {"event_id": "$3", "body": "urgent: third", "ts": 3}]])
+    object.__setattr__(cfg, "matrix_poll_seconds", 0)
+    rt, s = make(cfg, ok() * 4, names=("Pale Rest", "Dark Hinge"), matrix=m)
+    educate(rt, "Pale Rest", "Dark Hinge")
+    s.step_matrix(force=True)
+    s.step_matrix(force=True)
+    prompts = _delivered_to(rt, "urgent: first")
+    assert len(prompts) == 2  # one prompt per instance, not one per message
+    assert all("urgent: third" in p and "second, quieter" in p and "3 times" in p for p in prompts)
+    s.step_matrix(force=True)
+    assert len(rt.llm.calls) == 4  # and nothing is delivered again
+    s.run_counted("Pale Rest")
+    assert len(_delivered_to(rt, "second, quieter")) == 2  # the quiet one was already delivered with the urgent ones
 
 
 # --- graceful stop and resuming a round ---

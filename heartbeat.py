@@ -27,10 +27,10 @@ class TurnResult:
     recap: str
 
 
-def run_prompt(rt: Runtime, inst, kind: str, matrix_msg: str = None) -> TurnResult:
+def run_prompt(rt: Runtime, inst, kind: str, matrix_msgs: list = None) -> TurnResult:
     cfg = rt.cfg
     system = build_system(rt, inst, kind)
-    user = build_user(rt, inst, kind, matrix_msg)
+    user = build_user(rt, inst, kind, matrix_msgs)
     budget = ContextBudget(cfg.num_ctx, cfg.response_reserve)
     budget.spend(est_tokens(system) + est_tokens(user))
     outcome = TurnOutcome()

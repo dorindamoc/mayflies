@@ -56,6 +56,14 @@ def addressed_names(body: str, alive_names: list) -> list:
     return [name for _, name in sorted(found)]
 
 
+URGENT = re.compile(r"\s*urgent\b", re.I)
+
+
+def is_urgent(body: str) -> bool:
+    """A message that begins with the word "urgent" is delivered at once instead of at the next heartbeat."""
+    return bool(URGENT.match(body))
+
+
 class MatrixInbox:
     """Tracks Dorin's messages and who has received them. State persists in a JSON file."""
 
@@ -84,11 +92,11 @@ class MatrixInbox:
         self._fresh = False
         self._save()
 
-    def due(self, receiving_names: list, alive_names: list = None) -> list:
-        """Deliveries owed now. A message goes to the receiving instances, or, when it names living instances
-        with "for <name>", only to those of them that are receiving (so a named newborn is not written to)."""
+    def resolve(self, receiving_names: list, alive_names: list = None) -> None:
+        """Fixes who each new message is for: the receiving instances, or, when it names living instances with
+        "for <name>", only those of them that are receiving (so a named newborn is not written to). Also marks
+        which messages cannot wait for a heartbeat: named ones and ones starting with "urgent"."""
         alive_names = receiving_names if alive_names is None else alive_names
-        out = []
         for p in self.pending:
             if p["targets"] is None:
                 named = addressed_names(p["body"], alive_names)
@@ -98,11 +106,28 @@ class MatrixInbox:
                     p["targets"] = list(receiving_names)
                 else:
                     continue
-            for name in p["targets"]:
-                if name not in p["delivered"] and name in receiving_names:
-                    out.append((p, name))
+                p["now"] = bool(named) or is_urgent(p["body"])
         self._save()
-        return out
+
+    def owed(self, name: str) -> list:
+        """Messages for this instance that it has not received yet, oldest first."""
+        return [p for p in self.pending
+                if p["targets"] is not None and name in p["targets"] and name not in p["delivered"]]
+
+    def immediate(self, receiving_names: list, alive_names: list = None) -> list:
+        """(name, messages) for instances owed a message that should not wait: one prompt per instance carries
+        everything it is owed. Everything else is left for the instance's next heartbeat."""
+        alive_names = receiving_names if alive_names is None else alive_names
+        batches = []
+        for name in receiving_names:
+            owed = self.owed(name)
+            if any(p.get("now", self._now(p, alive_names)) for p in owed):
+                batches.append((name, owed))
+        return batches
+
+    def _now(self, p: dict, alive_names: list) -> bool:
+        # state written before messages were told apart: named or urgent ones are immediate, the rest wait
+        return bool(addressed_names(p["body"], alive_names)) or is_urgent(p["body"])
 
     def mark_delivered(self, event_id: str, name: str) -> None:
         for p in self.pending:

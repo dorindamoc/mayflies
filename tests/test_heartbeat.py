@@ -82,7 +82,7 @@ def test_recap_truncated_at_word_boundary(cfg):
 
 def test_matrix_kind_includes_message_and_uses_budget(cfg):
     rt = make_rt(cfg, [LLMReply("ok"), LLMReply("n")])
-    run_prompt(rt, rt.registry.get("Pale Rest"), "matrix", matrix_msg="status?")
+    run_prompt(rt, rt.registry.get("Pale Rest"), "matrix", matrix_msgs=["status?"])
     assert "status?" in rt.llm.calls[0]["messages"][1]["content"]
     assert rt.llm.calls[0]["tools"]  # tools offered
     assert rt.llm.calls[-1]["tools"] is None  # distiller has no tools
@@ -160,7 +160,7 @@ def test_later_prompts_and_empty_heritage_get_the_full_toolset(cfg):
     run_prompt(rt, inst, "heartbeat")
     assert "board_post" in _names(rt.llm.calls[2])
     inst.prompts_done = 0
-    run_prompt(rt, inst, "matrix", matrix_msg="hi")  # a matrix prompt is never the reading prompt
+    run_prompt(rt, inst, "matrix", matrix_msgs=["hi"])  # a matrix prompt is never the reading prompt
     assert "board_post" in _names(rt.llm.calls[-2])
 
 

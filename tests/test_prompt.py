@@ -76,7 +76,7 @@ def test_parents_with_traits_shown(rt):
 def test_user_message_contains_inbox_and_matrix_but_not_board_text(rt):
     rt.store.board_post("Dark Hinge", "is this performance?")
     rt.store.inbox_append("Pale Rest", "Dark Hinge", "private hello")
-    u = build_user(rt, rt.registry.get("Pale Rest"), "matrix", matrix_msg="how are you all?")
+    u = build_user(rt, rt.registry.get("Pale Rest"), "matrix", matrix_msgs=["how are you all?"])
     assert "private hello" in u and "how are you all?" in u
     assert "is this performance?" not in u
     assert "Dorin" in u
@@ -153,7 +153,7 @@ def test_first_heartbeat_asks_for_reading_heritage_within_the_allowance(rt):
     assert "at least" in u and "more if you want" in u
     assert "query_heritage" in u and "read_heritage" in u and "no required task" not in u.lower()
     assert "teachings/" not in u  # nothing to act on yet
-    assert "first awakening" not in build_user(rt, me, "matrix", matrix_msg="hi")
+    assert "first awakening" not in build_user(rt, me, "matrix", matrix_msgs=["hi"])
     me.prompts_done = 1
     assert "first awakening" not in build_user(rt, me, "heartbeat")
 
@@ -216,3 +216,16 @@ def test_earlier_civilizations_and_their_stories_are_pointed_to(rt):
     rt.registry.get("Pale Rest").civ = 2
     s = build_system(rt, rt.registry.get("Pale Rest"), "heartbeat")
     assert "Earlier civilizations" in s and "the Forest" in s and "H-007" in s and "civilization-history" in s
+
+
+def test_a_heartbeat_carries_what_dorin_wrote_and_several_messages_are_numbered(rt):
+    me = rt.registry.get("Pale Rest")
+    me.prompts_done = 1  # not the reading prompt
+    plain = build_user(rt, me, "heartbeat")
+    assert "wrote to the civilization" not in plain
+    one = build_user(rt, me, "heartbeat", matrix_msgs=["mind the pond"])
+    assert "Dorin, the human founder, wrote to the civilization:" in one and '"mind the pond"' in one
+    many = build_user(rt, me, "matrix", matrix_msgs=["first", "second"])
+    assert "2 times" in many and '1. "first"' in many and '2. "second"' in many
+    reading = rt.registry.get("Dark Hinge")  # prompts_done is 0: still reading
+    assert "mind the pond" not in build_user(rt, reading, "heartbeat")

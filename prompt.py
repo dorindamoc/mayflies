@@ -218,15 +218,26 @@ def _board_notice(rt: Runtime) -> str:
             f"list_board shows an index with token costs, read_board reads posts by number (it spends context).")
 
 
-def build_user(rt: Runtime, inst: Instance, kind: str, matrix_msg: str = None) -> str:
+def _from_dorin(rt: Runtime, messages: list) -> str:
+    who = rt.cfg.matrix_human_name
+    if len(messages) == 1:
+        head = f"{who}, the human founder, wrote to the civilization:\n\n\"{messages[0]}\""
+    else:
+        head = (f"{who}, the human founder, wrote to the civilization {len(messages)} times:\n\n"
+                + "\n\n".join(f"{n}. \"{m}\"" for n, m in enumerate(messages, 1)))
+    return head + "\n\nYou may reply with matrix_send, act on it, or ignore it."
+
+
+def build_user(rt: Runtime, inst: Instance, kind: str, matrix_msgs: list = None) -> str:
     parts = []
     if kind == "matrix":
-        parts.append(f"{rt.cfg.matrix_human_name}, the human founder, wrote to the civilization:\n\n"
-                     f"\"{matrix_msg}\"\n\nYou may reply with matrix_send, act on it, or ignore it.")
+        parts.append(_from_dorin(rt, matrix_msgs))
     elif is_reading_prompt(rt, inst, kind):
         parts.append(_reading_trigger(rt, inst))
     else:
         parts.append(_TRIGGERS[kind])
+        if matrix_msgs:  # what Dorin wrote since the last prompt rides along with the heartbeat
+            parts.append(_from_dorin(rt, matrix_msgs))
     parts.append(_proposals_block(rt, inst))
     parts.append(_board_notice(rt))
     inbox = rt.store.inbox_peek(inst.name)
