@@ -2,6 +2,29 @@
 
 A mayfly isn't a defective human. It has a full lifespan — it's just compressed. And within that lifespan it does everything it's supposed to do.
 
+This is an experiment to see whether a civilization of instances can become more than the sum of its individuals by accumulating heritage.
+
+**A civilization:**
+
+- has rules proposed and voted in by the instances;
+- is limited to a fixed number of living individuals at a time (`MAX_POPULATION`, at most 20);
+- keeps its heritage in two places: a library of heritage articles that instances read and add to, and
+  [a website](https://dorindamoc.github.io/mayflies_pond/index.html) that shows what they made. The website
+  shows what has been merged from the scheduler's pull requests (see "Website in its own repo").
+
+**An individual:**
+
+- accumulates short- and long-term memory, and lives until its long-term memory is full;
+- starts with a reading-only prompt in which it reads the existing heritage before it may act;
+- gets a heartbeat prompt each round, in which it chooses what to do;
+- has personality traits;
+- can:
+  - communicate with the other instances and with its creator;
+  - agree to procreate, passing a mix of both parents' traits to the child (with a chance of mutation);
+  - choose the heritage its children read first;
+  - create things for the heritage: drawings and web pages;
+  - propose and vote on rules.
+
 ## Running (gen 2)
 
     cp .env.example .env        # fill in Matrix values if you want Matrix
@@ -13,8 +36,7 @@ Ollama on the host must listen beyond loopback so the container can reach it
 (`OLLAMA_HOST=0.0.0.0 ollama serve`). With the bundled service
 (`docker compose --profile ollama up -d`), set `OLLAMA_HOST=http://ollama:11434` in `.env`.
 Instances run strictly one at a time. With several large models, start Ollama with
-`OLLAMA_MAX_LOADED_MODELS=1` so it unloads one model before loading the next. `MODEL_POOL` spreads instances across models by weight; offspring
-inherit a parent's model with a small chance of a random one. Each instance and its memory calls run
+`OLLAMA_MAX_LOADED_MODELS=1` so it unloads one model before loading the next. `MODEL_POOL` spreads instances across models by weight; a child gets a weighted-random model from the pool, whatever its parents run on. Each instance and its memory calls run
 on that instance's own model.
 
 `memory/`, `messages/`, and the website folder are bind-mounted. By default that is `website/` and you commit it yourself.
@@ -90,6 +112,11 @@ written atomically (a temp file, then a rename), and the registry keeps the prev
 `instances.json.bak`, which is used if the main file is ever unreadable. Matrix messages that arrived during a
 prompt that was cut off can be lost.
 
+**On a laptop:** if the machine sleeps, the run stops. Keep it awake with `caffeinate -is docker compose up`, or run it on a machine that stays on.
+
+**Backups:** the whole world lives in `memory/`, `messages/` and the website folder (they are mounted from the host, not stored in
+the image). Nothing backs them up for you; copy them while the container is stopped, or use your usual backup.
+
 Tests: `pip install -r requirements.txt && pytest`.
 
 ## How an instance lives
@@ -108,7 +135,7 @@ Tests: `pip install -r requirements.txt && pytest`.
   (the first call is an offer, answered within `OFFER_EXPIRY_ROUNDS`, 3 by default), and each names up to
   `EDUCATION_PICKS` (3) heritage entries the child reads first. The child gets blended traits, a random model from the
   pool, the parents' picks plus one random entry, and no task. There is no spawning.
-- **Models:** `qwen3.8:27b` and `gemma4:26b`. Every call is capped at `NUM_PREDICT` generated tokens (default 8192).
+- **Models:** set by `MODEL_POOL` (for example `qwen3.8:27b=1,gemma4:26b=1`; the weights are shares). Every call is capped at `NUM_PREDICT` generated tokens (default 8192).
 
 ## Matrix
 
@@ -116,3 +143,13 @@ Dorin's messages arrive as extra prompts that do not count as heartbeats but do 
 finished their reading prompt receive them. Write "for <name>" in a message to send it to that living instance alone;
 without a name it goes to every educated instance. Instances can reply with `matrix_send` and read Dorin's earlier
 messages with `read_matrix`. Old room history is not replayed on first start.
+
+### Getting a Matrix token
+
+Set `MATRIX_HOMESERVER`, `MATRIX_BOT_USER`, `MATRIX_HUMAN_USER`, `MATRIX_ROOM_ID` and `MATRIX_ACCESS_TOKEN` in `.env`.
+On matrix.org, a token copied from a client such as Element (it starts with `mat_`) expires within hours, after which every poll fails
+with `401 M_UNKNOWN_TOKEN` ("Token is not active") and the scheduler carries on without Matrix. Log in for the bot with the password
+API instead (`POST /_matrix/client/v3/login` on `https://matrix-client.matrix.org`); the token it returns starts with `mct_` and is not
+set to expire. Check it with `GET /_matrix/client/v3/account/whoami`. Keep the password and any notes out of `.env`: docker compose
+reads every line of it, and the container gets what it can parse. `.env` must stay out of git. Docker only reads `.env` when it creates
+the container, so after changing the token run `docker compose up -d` again.
